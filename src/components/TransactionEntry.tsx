@@ -60,7 +60,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           <div className="space-y-2">
             <Label htmlFor="amount" className="flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
-              Amount
+              Amount (₹)
             </Label>
             <Input
               id="amount"
@@ -80,7 +80,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
             </Label>
             <Input
               id="date"
-              type="date"
+              type="number"
+              min="1"
+              max="31"
+              placeholder="DD"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
@@ -148,7 +151,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Transactions ({transactions.length})</h3>
             <Badge variant="outline" className="text-lg px-3 py-1">
-              Total: ${totalAmount.toFixed(2)}
+              Total: ₹{totalAmount.toFixed(2)}
             </Badge>
           </div>
           
@@ -169,7 +172,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       </div>
                     </div>
                     <div className="text-lg font-semibold text-green-600">
-                      ${transaction.amount.toFixed(2)}
+                      ₹{transaction.amount.toFixed(2)}
                     </div>
                   </div>
                 </CardContent>

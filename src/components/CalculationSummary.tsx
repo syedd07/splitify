@@ -32,11 +32,8 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
         .filter(t => t.category === 'personal' && t.spentBy === person.id)
         .reduce((sum, t) => sum + t.amount, 0);
       
-      const commonExpensesPaid = transactions
-        .filter(t => t.category === 'common' && t.spentBy === person.id)
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const totalOwed = personalExpenses + commonPerPerson - commonExpensesPaid;
+      // Total amount this person needs to pay (personal + their share of common)
+      const totalOwed = personalExpenses + commonPerPerson;
       
       return {
         personId: person.id,
@@ -60,9 +57,21 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
     return people.find(p => p.id === id)?.name || '';
   };
 
+  const getTransactionsByPerson = () => {
+    const transactionsByPerson: { [key: string]: Transaction[] } = {};
+    
+    people.forEach(person => {
+      transactionsByPerson[person.id] = transactions.filter(t => t.spentBy === person.id);
+    });
+    
+    return transactionsByPerson;
+  };
+
   const generatePDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
+
+    const transactionsByPerson = getTransactionsByPerson();
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -80,6 +89,8 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
             .total { font-weight: bold; }
             .common { background-color: #e8f5e8; }
             .personal { background-color: #f0f8ff; }
+            .person-section { margin: 20px 0; page-break-inside: avoid; }
+            .person-header { background-color: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; }
           </style>
         </head>
         <body>
@@ -90,39 +101,53 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           </div>
           
           <div class="summary">
-            <h3>Summary</h3>
+            <h3>Payment Summary</h3>
             <table>
-              <tr><th>Person</th><th>Personal Expenses</th><th>Common Share</th><th>Amount Owed</th></tr>
+              <tr><th>Person</th><th>Personal Expenses</th><th>Common Share</th><th>Total Payable</th></tr>
               ${calculation.personBalances.map(balance => `
                 <tr>
                   <td>${getPersonName(balance.personId)}</td>
-                  <td>$${balance.personalExpenses.toFixed(2)}</td>
-                  <td>$${balance.commonExpenses.toFixed(2)}</td>
-                  <td class="${balance.totalOwed > 0 ? 'total' : ''}">$${Math.abs(balance.totalOwed).toFixed(2)} ${balance.totalOwed > 0 ? 'owed' : 'credit'}</td>
+                  <td>₹${balance.personalExpenses.toFixed(2)}</td>
+                  <td>₹${balance.commonExpenses.toFixed(2)}</td>
+                  <td class="total">₹${balance.totalOwed.toFixed(2)}</td>
                 </tr>
               `).join('')}
+              <tr class="total">
+                <td>Total</td>
+                <td>₹${calculation.totalAmount - calculation.totalCommonExpenses}</td>
+                <td>₹${calculation.totalCommonExpenses}</td>
+                <td>₹${calculation.totalAmount.toFixed(2)}</td>
+              </tr>
             </table>
           </div>
 
           <div class="transaction-list">
-            <h3>All Transactions</h3>
-            <table>
-              <tr><th>Date</th><th>Description</th><th>Amount</th><th>Paid By</th><th>Category</th></tr>
-              ${transactions.map(transaction => `
-                <tr class="${transaction.category}">
-                  <td>${transaction.date}</td>
-                  <td>${transaction.description}</td>
-                  <td>$${transaction.amount.toFixed(2)}</td>
-                  <td>${getPersonName(transaction.spentBy)}</td>
-                  <td>${transaction.category}</td>
-                </tr>
-              `).join('')}
-              <tr class="total">
-                <td colspan="2">Total</td>
-                <td>$${calculation.totalAmount.toFixed(2)}</td>
-                <td colspan="2"></td>
-              </tr>
-            </table>
+            <h3>Transactions by Person</h3>
+            ${people.map(person => `
+              <div class="person-section">
+                <div class="person-header">
+                  <h4>${person.name}${person.isCardOwner ? ' (Card Owner)' : ''}</h4>
+                </div>
+                ${transactionsByPerson[person.id]?.length > 0 ? `
+                  <table>
+                    <tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th></tr>
+                    ${transactionsByPerson[person.id].map(transaction => `
+                      <tr class="${transaction.category}">
+                        <td>${transaction.date}</td>
+                        <td>${transaction.description}</td>
+                        <td>₹${transaction.amount.toFixed(2)}</td>
+                        <td>${transaction.category}</td>
+                      </tr>
+                    `).join('')}
+                    <tr class="total">
+                      <td colspan="2">Subtotal</td>
+                      <td>₹${transactionsByPerson[person.id].reduce((sum, t) => sum + t.amount, 0).toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </table>
+                ` : '<p>No transactions</p>'}
+              </div>
+            `).join('')}
           </div>
         </body>
       </html>
@@ -149,11 +174,11 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           {/* Total Overview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">${calculation.totalAmount.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-blue-600">₹{calculation.totalAmount.toFixed(2)}</div>
               <div className="text-sm text-muted-foreground">Total Expenses</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">${calculation.totalCommonExpenses.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-green-600">₹{calculation.totalCommonExpenses.toFixed(2)}</div>
               <div className="text-sm text-muted-foreground">Common Expenses</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg">
@@ -168,7 +193,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <User className="w-5 h-5" />
-              Individual Balances
+              Total Payable by Each Person
             </h3>
             
             {calculation.personBalances.map(balance => {
@@ -187,17 +212,14 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                         )}
                       </div>
                       <div className="text-right">
-                        <div className={`text-xl font-bold ${balance.totalOwed > 0 ? 'text-red-600' : balance.totalOwed < 0 ? 'text-green-600' : 'text-gray-600'}`}>
-                          {balance.totalOwed > 0 && 'Owes '}
-                          {balance.totalOwed < 0 && 'Gets '}
-                          ${Math.abs(balance.totalOwed).toFixed(2)}
-                          {balance.totalOwed === 0 && 'Even'}
+                        <div className="text-xl font-bold text-blue-600">
+                          Total: ₹{balance.totalOwed.toFixed(2)}
                         </div>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                      <div>Personal expenses: ${balance.personalExpenses.toFixed(2)}</div>
-                      <div>Common share: ${balance.commonExpenses.toFixed(2)}</div>
+                      <div>Personal expenses: ₹{balance.personalExpenses.toFixed(2)}</div>
+                      <div>Common share: ₹{balance.commonExpenses.toFixed(2)}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -231,7 +253,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                         </div>
                       </div>
                       <div className="text-lg font-semibold">
-                        ${transaction.amount.toFixed(2)}
+                        ₹{transaction.amount.toFixed(2)}
                       </div>
                     </div>
                   </CardContent>
