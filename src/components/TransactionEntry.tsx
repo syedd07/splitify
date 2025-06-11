@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Plus, Calendar, DollarSign, Tag, Users, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
 
 interface TransactionEntryProps {
@@ -33,8 +33,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [date, setDate] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
   const [spentBy, setSpentBy] = useState('');
-  
-  const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,13 +47,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         splitBetween: category === 'common' ? people.map(p => p.id) : undefined
       };
       onAddTransaction(transaction);
-      
-      // Show success toast
-      toast({
-        title: "Transaction Added",
-        description: `${category === 'common' ? 'Common expense' : 'Personal expense'} of ₹${parseFloat(amount).toFixed(2)} added successfully.`,
-      });
-      
       setAmount('');
       setDescription('');
       setDate('');
@@ -97,24 +88,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
     return acc;
   }, []);
-
-  const handleDeleteTransaction = (transaction: Transaction) => {
-    if (transaction.category === 'common') {
-      const relatedTransactions = transactions.filter(t => 
-        t.description === transaction.description && 
-        t.date === transaction.date && 
-        t.isCommonSplit
-      );
-      relatedTransactions.forEach(t => onDeleteTransaction(t.id));
-    } else {
-      onDeleteTransaction(transaction.id);
-    }
-    
-    toast({
-      title: "Transaction Deleted",
-      description: `${transaction.description} has been removed from your expenses.`,
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -273,7 +246,19 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction 
-                              onClick={() => handleDeleteTransaction(transaction)}
+                              onClick={() => {
+                                if (transaction.category === 'common') {
+                                  // Delete all related common split transactions
+                                  const relatedTransactions = transactions.filter(t => 
+                                    t.description === transaction.description && 
+                                    t.date === transaction.date && 
+                                    t.isCommonSplit
+                                  );
+                                  relatedTransactions.forEach(t => onDeleteTransaction(t.id));
+                                } else {
+                                  onDeleteTransaction(transaction.id);
+                                }
+                              }}
                               className="bg-red-600 hover:bg-red-700"
                             >
                               Delete

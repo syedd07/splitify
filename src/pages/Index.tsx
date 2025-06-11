@@ -3,7 +3,6 @@ import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
@@ -15,8 +14,6 @@ const Index = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
-  
-  const { toast } = useToast();
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -29,15 +26,12 @@ const Index = () => {
   const handleStartSplitting = () => {
     if (selectedMonth && selectedYear && people.length >= 2) {
       setCurrentStep('transactions');
-      toast({
-        title: "Setup Complete!",
-        description: `Ready to add expenses for ${selectedMonth} ${selectedYear} with ${people.length} people.`,
-      });
     }
   };
 
   const handleAddTransaction = (transaction: Transaction) => {
     if (transaction.category === 'common') {
+      // For common expenses, create individual transactions for each person
       const amountPerPerson = transaction.amount / people.length;
       people.forEach(person => {
         const commonTransaction: Transaction = {
@@ -60,26 +54,14 @@ const Index = () => {
 
   const handleProceedToSummary = () => {
     setCurrentStep('summary');
-    toast({
-      title: "Calculations Ready!",
-      description: "Your bill split has been calculated. Review the summary below.",
-    });
   };
 
   const handleBackToSetup = () => {
     setCurrentStep('setup');
-    toast({
-      title: "Returned to Setup",
-      description: "You can now modify the bill month or people in your group.",
-    });
   };
 
   const handleBackToTransactions = () => {
     setCurrentStep('transactions');
-    toast({
-      title: "Back to Expenses",
-      description: "You can add, edit, or remove transactions here.",
-    });
   };
 
   return (

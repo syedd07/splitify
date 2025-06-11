@@ -1,10 +1,11 @@
+
 import React from 'react';
-import { Download, Calculator, Users, Receipt } from 'lucide-react';
+import { Download, User, DollarSign, FileText, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { Transaction, Person, PersonBalance } from '@/types/BillSplitter';
+import { Separator } from '@/components/ui/separator';
+import { Transaction, Person, SplitCalculation } from '@/types/BillSplitter';
 
 interface CalculationSummaryProps {
   people: Person[];
@@ -13,328 +14,253 @@ interface CalculationSummaryProps {
   year: string;
 }
 
-const CalculationSummary: React.FC<CalculationSummaryProps> = ({ 
-  people, 
-  transactions, 
-  month, 
-  year 
+const CalculationSummary: React.FC<CalculationSummaryProps> = ({
+  people,
+  transactions,
+  month,
+  year
 }) => {
-  const { toast } = useToast();
-
-  const calculateBalances = (): PersonBalance[] => {
-    return people.map(person => {
+  const calculateSplit = (): SplitCalculation => {
+    const personBalances = people.map(person => {
       const personalExpenses = transactions
-        .filter(t => t.spentBy === person.id && !t.isCommonSplit)
+        .filter(t => t.category === 'personal' && t.spentBy === person.id)
         .reduce((sum, t) => sum + t.amount, 0);
-
+      
       const commonExpenses = transactions
         .filter(t => t.isCommonSplit && t.spentBy === person.id)
         .reduce((sum, t) => sum + t.amount, 0);
-
+      
+      const totalOwed = personalExpenses + commonExpenses;
+      
       return {
         personId: person.id,
         personalExpenses,
         commonExpenses,
-        totalOwed: personalExpenses + commonExpenses
+        totalOwed
       };
     });
+
+    const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalCommonExpenses = transactions
+      .filter(t => t.isCommonSplit)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      personBalances,
+      totalAmount,
+      totalCommonExpenses
+    };
   };
 
-  const balances = calculateBalances();
-  const totalAmount = balances.reduce((sum, b) => sum + b.totalOwed, 0);
-  const totalCommonExpenses = balances.reduce((sum, b) => sum + b.commonExpenses, 0);
+  const calculation = calculateSplit();
+  const cardOwner = people.find(p => p.isCardOwner);
+  
+  const getPersonName = (id: string) => {
+    return people.find(p => p.id === id)?.name || '';
+  };
+
+  const getTransactionsByPerson = () => {
+    const transactionsByPerson: { [key: string]: Transaction[] } = {};
+    
+    people.forEach(person => {
+      transactionsByPerson[person.id] = transactions.filter(t => t.spentBy === person.id);
+    });
+    
+    return transactionsByPerson;
+  };
 
   const generatePDF = () => {
-    const docDefinition = {
-      content: [
-        {
-          text: 'Credit Card Bill Split Summary',
-          style: 'header',
-          alignment: 'center',
-          margin: [0, 0, 0, 20]
-        },
-        {
-          text: `${month} ${year}`,
-          style: 'subheader',
-          alignment: 'center',
-          margin: [0, 0, 0, 30]
-        },
-        {
-          text: 'Payment Summary',
-          style: 'sectionHeader',
-          margin: [0, 20, 0, 10]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['*', 'auto', 'auto', 'auto'],
-            body: [
-              [
-                { text: 'Person', style: 'tableHeader' },
-                { text: 'Personal Expenses', style: 'tableHeader' },
-                { text: 'Common Share', style: 'tableHeader' },
-                { text: 'Total Payable', style: 'tableHeader' }
-              ],
-              ...balances.map(balance => {
-                const person = people.find(p => p.id === balance.personId);
-                return [
-                  { text: person?.name || '', style: 'tableCell' },
-                  { text: `₹${balance.personalExpenses.toFixed(2)}`, style: 'tableCell' },
-                  { text: `₹${balance.commonExpenses.toFixed(2)}`, style: 'tableCell' },
-                  { text: `₹${balance.totalOwed.toFixed(2)}`, style: 'tableCell' }
-                ];
-              }),
-              [
-                { text: 'Total', style: 'tableCellBold' },
-                { text: `₹${balances.reduce((sum, b) => sum + b.personalExpenses, 0).toFixed(2)}`, style: 'tableCellBold' },
-                { text: `₹${totalCommonExpenses.toFixed(2)}`, style: 'tableCellBold' },
-                { text: `₹${totalAmount.toFixed(2)}`, style: 'tableCellBold' }
-              ]
-            ]
-          },
-          layout: 'lightHorizontalLines'
-        },
-        {
-          text: 'Transactions by Person',
-          style: 'sectionHeader',
-          margin: [0, 30, 0, 10]
-        },
-        ...people.map(person => {
-          const personTransactions = transactions.filter(t => 
-            (t.spentBy === person.id && !t.isCommonSplit) || 
-            (t.isCommonSplit && t.spentBy === person.id)
-          );
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
-          if (personTransactions.length === 0) return [];
+    const transactionsByPerson = getTransactionsByPerson();
 
-          return [
-            {
-              text: `${person.name}${person.isCardOwner ? ' (Card Owner)' : ''}`,
-              style: 'personHeader',
-              margin: [0, 15, 0, 5]
-            },
-            {
-              table: {
-                headerRows: 1,
-                widths: ['auto', '*', 'auto', 'auto'],
-                body: [
-                  [
-                    { text: 'Date', style: 'tableHeader' },
-                    { text: 'Description', style: 'tableHeader' },
-                    { text: 'Amount', style: 'tableHeader' },
-                    { text: 'Category', style: 'tableHeader' }
-                  ],
-                  ...personTransactions.map(transaction => [
-                    { text: transaction.date, style: 'tableCell' },
-                    { text: transaction.description, style: 'tableCell' },
-                    { text: `₹${transaction.amount.toFixed(2)}`, style: 'tableCell' },
-                    { text: transaction.isCommonSplit ? 'common' : transaction.category, style: 'tableCell' }
-                  ]),
-                  [
-                    { text: 'Subtotal', style: 'tableCellBold', colSpan: 2 },
-                    {},
-                    { text: `₹${personTransactions.reduce((sum, t) => sum + t.amount, 0).toFixed(2)}`, style: 'tableCellBold' },
-                    { text: '', style: 'tableCellBold' }
-                  ]
-                ]
-              },
-              layout: 'lightHorizontalLines',
-              margin: [0, 0, 0, 10]
-            }
-          ];
-        }).flat()
-      ],
-      styles: {
-        header: { fontSize: 20, bold: true },
-        subheader: { fontSize: 16, bold: true },
-        sectionHeader: { fontSize: 14, bold: true },
-        personHeader: { fontSize: 12, bold: true },
-        tableHeader: { fontSize: 10, bold: true, fillColor: '#f0f0f0' },
-        tableCell: { fontSize: 9 },
-        tableCellBold: { fontSize: 9, bold: true }
-      }
-    };
-
-    try {
-      import('pdfmake/build/pdfmake').then(pdfMakeModule => {
-        const pdfMake = pdfMakeModule.default;
-        import('pdfmake/build/vfs_fonts').then(vfsModule => {
-          pdfMake.vfs = vfsModule.default.pdfMake.vfs;
-          pdfMake.createPdf(docDefinition).download(`credit-card-split-${month}-${year}.pdf`);
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Credit Card Bill Split - ${month} ${year}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .summary { margin: 20px 0; }
+            .transaction-list { margin: 20px 0; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .total { font-weight: bold; }
+            .common { background-color: #e8f5e8; }
+            .personal { background-color: #f0f8ff; }
+            .person-section { margin: 20px 0; page-break-inside: avoid; }
+            .person-header { background-color: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Credit Card Bill Split</h1>
+            <h2>${month} ${year}</h2>
+            <p>Card Owner: ${cardOwner?.name || 'N/A'}</p>
+          </div>
           
-          toast({
-            title: "PDF Downloaded",
-            description: `Bill split summary for ${month} ${year} has been downloaded successfully.`,
-          });
-        });
-      });
-    } catch (error) {
-      toast({
-        title: "PDF Generation Failed",
-        description: "There was an error generating the PDF. Please try again.",
-        variant: "destructive",
-      });
-    }
+          <div class="summary">
+            <h3>Payment Summary</h3>
+            <table>
+              <tr><th>Person</th><th>Personal Expenses</th><th>Common Share</th><th>Total Payable</th></tr>
+              ${calculation.personBalances.map(balance => `
+                <tr>
+                  <td>${getPersonName(balance.personId)}</td>
+                  <td>₹${balance.personalExpenses.toFixed(2)}</td>
+                  <td>₹${balance.commonExpenses.toFixed(2)}</td>
+                  <td class="total">₹${balance.totalOwed.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+              <tr class="total">
+                <td>Total</td>
+                <td>₹${calculation.personBalances.reduce((sum, b) => sum + b.personalExpenses, 0).toFixed(2)}</td>
+                <td>₹${calculation.totalCommonExpenses.toFixed(2)}</td>
+                <td>₹${calculation.totalAmount.toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="transaction-list">
+            <h3>Transactions by Person</h3>
+            ${people.map(person => `
+              <div class="person-section">
+                <div class="person-header">
+                  <h4>${person.name}${person.isCardOwner ? ' (Card Owner)' : ''}</h4>
+                </div>
+                ${transactionsByPerson[person.id]?.length > 0 ? `
+                  <table>
+                    <tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th></tr>
+                    ${transactionsByPerson[person.id].map(transaction => `
+                      <tr class="${transaction.isCommonSplit ? 'common' : 'personal'}">
+                        <td>${transaction.date} ${month} ${year}</td>
+                        <td>${transaction.description}${transaction.isCommonSplit ? ' (Common Split)' : ''}</td>
+                        <td>₹${transaction.amount.toFixed(2)}</td>
+                        <td>${transaction.isCommonSplit ? 'common' : transaction.category}</td>
+                      </tr>
+                    `).join('')}
+                    <tr class="total">
+                      <td colspan="2">Subtotal</td>
+                      <td>₹${transactionsByPerson[person.id].reduce((sum, t) => sum + t.amount, 0).toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </table>
+                ` : '<p>No transactions</p>'}
+              </div>
+            `).join('')}
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calculator className="w-5 h-5" />
-              Bill Split Summary - {month} {year}
-            </CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Bill Split Summary - {month} {year}</span>
             <Button onClick={generatePDF} className="flex items-center gap-2">
               <Download className="w-4 h-4" />
               Download PDF
             </Button>
-          </div>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-4">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total Amount</p>
-                  <p className="text-2xl font-bold text-blue-600">₹{totalAmount.toFixed(2)}</p>
-                </div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Common Expenses</p>
-                  <p className="text-2xl font-bold text-green-600">₹{totalCommonExpenses.toFixed(2)}</p>
-                </div>
-              </Card>
-              <Card className="p-4">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total People</p>
-                  <p className="text-2xl font-bold text-purple-600">{people.length}</p>
-                </div>
-              </Card>
+        <CardContent className="space-y-6">
+          {/* Total Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">₹{calculation.totalAmount.toFixed(2)}</div>
+              <div className="text-sm text-muted-foreground">Total Expenses</div>
             </div>
-
-            <div>
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Payment Summary
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-200">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="border border-gray-200 p-3 text-left">Person</th>
-                      <th className="border border-gray-200 p-3 text-right">Personal Expenses</th>
-                      <th className="border border-gray-200 p-3 text-right">Common Share</th>
-                      <th className="border border-gray-200 p-3 text-right">Total Payable</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {balances.map((balance) => {
-                      const person = people.find(p => p.id === balance.personId);
-                      return (
-                        <tr key={balance.personId} className="hover:bg-gray-50">
-                          <td className="border border-gray-200 p-3">
-                            <div className="flex items-center gap-2">
-                              {person?.name}
-                              {person?.isCardOwner && (
-                                <Badge variant="default" className="text-xs">Card Owner</Badge>
-                              )}
-                            </div>
-                          </td>
-                          <td className="border border-gray-200 p-3 text-right font-mono">
-                            ₹{balance.personalExpenses.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-200 p-3 text-right font-mono">
-                            ₹{balance.commonExpenses.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-200 p-3 text-right font-mono font-semibold">
-                            ₹{balance.totalOwed.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-gray-100 font-semibold">
-                      <td className="border border-gray-200 p-3">Total</td>
-                      <td className="border border-gray-200 p-3 text-right font-mono">
-                        ₹{balances.reduce((sum, b) => sum + b.personalExpenses, 0).toFixed(2)}
-                      </td>
-                      <td className="border border-gray-200 p-3 text-right font-mono">
-                        ₹{totalCommonExpenses.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-200 p-3 text-right font-mono">
-                        ₹{totalAmount.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">₹{calculation.totalCommonExpenses.toFixed(2)}</div>
+              <div className="text-sm text-muted-foreground">Common Expenses</div>
             </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">{transactions.filter(t => !t.isCommonSplit || transactions.findIndex(orig => orig.description === t.description && orig.date === t.date && orig.isCommonSplit) === transactions.indexOf(t)).length}</div>
+              <div className="text-sm text-muted-foreground">Transactions</div>
+            </div>
+          </div>
 
-            <div>
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Receipt className="w-5 h-5" />
-                Transaction Details
-              </h3>
-              <div className="space-y-4">
-                {people.map(person => {
-                  const personTransactions = transactions.filter(t => 
-                    (t.spentBy === person.id && !t.isCommonSplit) || 
-                    (t.isCommonSplit && t.spentBy === person.id)
-                  );
+          <Separator />
 
-                  if (personTransactions.length === 0) return null;
+          {/* Individual Balances */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <User className="w-5 h-5" />
+              Total Payable by Each Person
+            </h3>
+            
+            {calculation.personBalances.map(balance => {
+              const person = people.find(p => p.id === balance.personId);
+              return (
+                <Card key={balance.personId} className="transition-all hover:shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-lg">{person?.name}</span>
+                        {person?.isCardOwner && (
+                          <Badge variant="secondary" className="flex items-center gap-1">
+                            <Crown className="w-3 h-3" />
+                            Card Owner
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-blue-600">
+                          Total: ₹{balance.totalOwed.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                      <div>Personal expenses: ₹{balance.personalExpenses.toFixed(2)}</div>
+                      <div>Common share: ₹{balance.commonExpenses.toFixed(2)}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
 
-                  return (
-                    <Card key={person.id}>
-                      <CardHeader className="pb-3">
+          <Separator />
+
+          {/* Transaction Details */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Transaction Details
+            </h3>
+            
+            <div className="space-y-2">
+              {transactions.filter(transaction => !transaction.isCommonSplit).map(transaction => (
+                <Card key={transaction.id} className="transition-all hover:shadow-sm">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{person.name}</h4>
-                          {person.isCardOwner && (
-                            <Badge variant="default" className="text-xs">Card Owner</Badge>
-                          )}
+                          <span className="font-medium">{transaction.description}</span>
+                          <Badge variant={transaction.category === 'common' ? 'default' : 'secondary'}>
+                            {transaction.category}
+                          </Badge>
                         </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
-                            <thead>
-                              <tr className="border-b">
-                                <th className="text-left p-2 text-sm">Date</th>
-                                <th className="text-left p-2 text-sm">Description</th>
-                                <th className="text-right p-2 text-sm">Amount</th>
-                                <th className="text-left p-2 text-sm">Category</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {personTransactions.map(transaction => (
-                                <tr key={transaction.id} className="border-b border-gray-100">
-                                  <td className="p-2 text-sm">{transaction.date}</td>
-                                  <td className="p-2 text-sm">{transaction.description}</td>
-                                  <td className="p-2 text-sm text-right font-mono">₹{transaction.amount.toFixed(2)}</td>
-                                  <td className="p-2 text-sm">
-                                    <Badge variant={transaction.isCommonSplit ? 'default' : 'secondary'} className="text-xs">
-                                      {transaction.isCommonSplit ? 'common' : transaction.category}
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              ))}
-                              <tr className="border-t-2 border-gray-300 font-semibold">
-                                <td className="p-2 text-sm" colSpan={2}>Subtotal</td>
-                                <td className="p-2 text-sm text-right font-mono">
-                                  ₹{personTransactions.reduce((sum, t) => sum + t.amount, 0).toFixed(2)}
-                                </td>
-                                <td className="p-2 text-sm"></td>
-                              </tr>
-                            </tbody>
-                          </table>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {getPersonName(transaction.spentBy)} • {transaction.date} {month} {year}
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
+                      </div>
+                      <div className="text-lg font-semibold">
+                        ₹{transaction.amount.toFixed(2)}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         </CardContent>
