@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/ffc5361b-abcb-41cc-9308-620c17ea16e2
+**URL**: [https://spilltify.netlify.app/](https://spilltify.netlify.app/)
 
 ## How can I edit this code?
 
