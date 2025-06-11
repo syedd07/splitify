@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,6 +31,10 @@ const Index = () => {
 
   const handleAddTransaction = (transaction: Transaction) => {
     setTransactions(prev => [...prev, { ...transaction, id: Date.now().toString() }]);
+  };
+
+  const handleDeleteTransaction = (transactionId: string) => {
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
   };
 
   const handleProceedToSummary = () => {
@@ -150,6 +153,7 @@ const Index = () => {
                 <TransactionEntry 
                   people={people} 
                   onAddTransaction={handleAddTransaction}
+                  onDeleteTransaction={handleDeleteTransaction}
                   transactions={transactions}
                 />
               </CardContent>

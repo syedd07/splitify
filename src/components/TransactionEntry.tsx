@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Plus, Calendar, DollarSign, Tag, Users } from 'lucide-react';
+import { Plus, Calendar, DollarSign, Tag, Users, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,17 +7,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Transaction, Person } from '@/types/BillSplitter';
 
 interface TransactionEntryProps {
   people: Person[];
   onAddTransaction: (transaction: Transaction) => void;
+  onDeleteTransaction: (transactionId: string) => void;
   transactions: Transaction[];
 }
 
 const TransactionEntry: React.FC<TransactionEntryProps> = ({ 
   people, 
-  onAddTransaction, 
+  onAddTransaction,
+  onDeleteTransaction,
   transactions 
 }) => {
   const [amount, setAmount] = useState('');
@@ -171,8 +173,38 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                         {getPersonName(transaction.spentBy)} • {transaction.date}
                       </div>
                     </div>
-                    <div className="text-lg font-semibold text-green-600">
-                      ₹{transaction.amount.toFixed(2)}
+                    <div className="flex items-center gap-3">
+                      <div className="text-lg font-semibold text-green-600">
+                        ₹{transaction.amount.toFixed(2)}
+                      </div>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete this transaction? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => onDeleteTransaction(transaction.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 </CardContent>
