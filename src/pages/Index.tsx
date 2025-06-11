@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Users, Calculator, Download, CreditCard } from 'lucide-react';
+import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,7 +30,22 @@ const Index = () => {
   };
 
   const handleAddTransaction = (transaction: Transaction) => {
-    setTransactions(prev => [...prev, { ...transaction, id: Date.now().toString() }]);
+    if (transaction.category === 'common') {
+      // For common expenses, create individual transactions for each person
+      const amountPerPerson = transaction.amount / people.length;
+      people.forEach(person => {
+        const commonTransaction: Transaction = {
+          ...transaction,
+          id: `${Date.now()}-${person.id}`,
+          amount: amountPerPerson,
+          spentBy: person.id,
+          isCommonSplit: true
+        };
+        setTransactions(prev => [...prev, commonTransaction]);
+      });
+    } else {
+      setTransactions(prev => [...prev, { ...transaction, id: Date.now().toString() }]);
+    }
   };
 
   const handleDeleteTransaction = (transactionId: string) => {
@@ -39,6 +54,14 @@ const Index = () => {
 
   const handleProceedToSummary = () => {
     setCurrentStep('summary');
+  };
+
+  const handleBackToSetup = () => {
+    setCurrentStep('setup');
+  };
+
+  const handleBackToTransactions = () => {
+    setCurrentStep('transactions');
   };
 
   return (
@@ -143,6 +166,18 @@ const Index = () => {
         {/* Transaction Entry Step */}
         {currentStep === 'transactions' && (
           <div className="space-y-6">
+            <div className="flex items-center gap-4 mb-4">
+              <Button 
+                onClick={handleBackToSetup}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Setup
+              </Button>
+            </div>
+            
             <Card className="max-w-4xl mx-auto">
               <CardHeader>
                 <CardTitle>
@@ -155,6 +190,8 @@ const Index = () => {
                   onAddTransaction={handleAddTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
                   transactions={transactions}
+                  month={selectedMonth}
+                  year={selectedYear}
                 />
               </CardContent>
             </Card>
@@ -175,12 +212,26 @@ const Index = () => {
 
         {/* Summary Step */}
         {currentStep === 'summary' && (
-          <CalculationSummary 
-            people={people}
-            transactions={transactions}
-            month={selectedMonth}
-            year={selectedYear}
-          />
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 mb-4">
+              <Button 
+                onClick={handleBackToTransactions}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Expenses
+              </Button>
+            </div>
+            
+            <CalculationSummary 
+              people={people}
+              transactions={transactions}
+              month={selectedMonth}
+              year={selectedYear}
+            />
+          </div>
         )}
       </div>
     </div>

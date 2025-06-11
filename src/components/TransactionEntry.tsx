@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Plus, Calendar, DollarSign, Tag, Users, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,13 +16,17 @@ interface TransactionEntryProps {
   onAddTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
   transactions: Transaction[];
+  month: string;
+  year: string;
 }
 
 const TransactionEntry: React.FC<TransactionEntryProps> = ({ 
   people, 
   onAddTransaction,
   onDeleteTransaction,
-  transactions 
+  transactions,
+  month,
+  year
 }) => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -31,14 +36,14 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (amount && description && date && spentBy) {
+    if (amount && description && date && (category === 'common' || spentBy)) {
       const transaction: Transaction = {
         id: '',
         amount: parseFloat(amount),
         description,
         date,
         category,
-        spentBy,
+        spentBy: category === 'common' ? 'common' : spentBy,
         splitBetween: category === 'common' ? people.map(p => p.id) : undefined
       };
       onAddTransaction(transaction);
@@ -50,10 +55,39 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const getPersonName = (id: string) => {
+    if (id === 'common') return 'Common Expense';
     return people.find(p => p.id === id)?.name || '';
   };
 
   const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+
+  // Group transactions by original common transactions
+  const displayTransactions = transactions.reduce((acc: Transaction[], transaction) => {
+    if (transaction.isCommonSplit) {
+      // Check if we already have this common transaction in our display list
+      const existingCommon = acc.find(t => 
+        t.description === transaction.description && 
+        t.date === transaction.date && 
+        t.category === 'common' &&
+        !t.isCommonSplit
+      );
+      
+      if (!existingCommon) {
+        // Create a display version of the common transaction
+        const originalAmount = people.length * transaction.amount;
+        acc.push({
+          ...transaction,
+          id: `common-${transaction.description}-${transaction.date}`,
+          amount: originalAmount,
+          spentBy: 'common',
+          isCommonSplit: false
+        });
+      }
+    } else {
+      acc.push(transaction);
+    }
+    return acc;
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -107,29 +141,14 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           />
         </div>
 
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Who spent this?
-          </Label>
-          <Select value={spentBy} onValueChange={setSpentBy}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select person" />
-            </SelectTrigger>
-            <SelectContent>
-              {people.map((person) => (
-                <SelectItem key={person.id} value={person.id}>
-                  {person.name}
-                  {person.isCardOwner && ' (Card Owner)'}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="space-y-3">
           <Label>Category</Label>
-          <RadioGroup value={category} onValueChange={(value: 'personal' | 'common') => setCategory(value)}>
+          <RadioGroup value={category} onValueChange={(value: 'personal' | 'common') => {
+            setCategory(value);
+            if (value === 'common') {
+              setSpentBy('');
+            }
+          }}>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="personal" id="personal" />
               <Label htmlFor="personal">Personal Expense</Label>
@@ -141,6 +160,36 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           </RadioGroup>
         </div>
 
+        {category === 'personal' && (
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Who spent this?
+            </Label>
+            <Select value={spentBy} onValueChange={setSpentBy}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select person" />
+              </SelectTrigger>
+              <SelectContent>
+                {people.map((person) => (
+                  <SelectItem key={person.id} value={person.id}>
+                    {person.name}
+                    {person.isCardOwner && ' (Card Owner)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {category === 'common' && (
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-600">
+              This expense will be split equally among all {people.length} people (₹{amount ? (parseFloat(amount) / people.length).toFixed(2) : '0.00'} each)
+            </p>
+          </div>
+        )}
+
         <Button type="submit" className="w-full">
           <Plus className="w-4 h-4 mr-2" />
           Add Transaction
@@ -148,17 +197,17 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       </form>
 
       {/* Transaction List */}
-      {transactions.length > 0 && (
+      {displayTransactions.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Transactions ({transactions.length})</h3>
+            <h3 className="text-lg font-semibold">Transactions ({displayTransactions.length})</h3>
             <Badge variant="outline" className="text-lg px-3 py-1">
               Total: ₹{totalAmount.toFixed(2)}
             </Badge>
           </div>
           
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {transactions.map((transaction) => (
+            {displayTransactions.map((transaction) => (
               <Card key={transaction.id} className="transition-all hover:shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -170,7 +219,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                         </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {getPersonName(transaction.spentBy)} • {transaction.date}
+                        {getPersonName(transaction.spentBy)} • {transaction.date} {month} {year}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -197,7 +246,19 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction 
-                              onClick={() => onDeleteTransaction(transaction.id)}
+                              onClick={() => {
+                                if (transaction.category === 'common') {
+                                  // Delete all related common split transactions
+                                  const relatedTransactions = transactions.filter(t => 
+                                    t.description === transaction.description && 
+                                    t.date === transaction.date && 
+                                    t.isCommonSplit
+                                  );
+                                  relatedTransactions.forEach(t => onDeleteTransaction(t.id));
+                                } else {
+                                  onDeleteTransaction(transaction.id);
+                                }
+                              }}
                               className="bg-red-600 hover:bg-red-700"
                             >
                               Delete

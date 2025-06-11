@@ -13,6 +13,7 @@ export interface Transaction {
   category: 'personal' | 'common';
   spentBy: string; // person id
   splitBetween?: string[]; // person ids for common expenses
+  isCommonSplit?: boolean; // to identify individual splits from common expenses
 }
 
 export interface PersonBalance {

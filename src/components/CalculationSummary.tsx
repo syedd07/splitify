@@ -21,31 +21,33 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   year
 }) => {
   const calculateSplit = (): SplitCalculation => {
-    const totalCommonExpenses = transactions
-      .filter(t => t.category === 'common')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const commonPerPerson = totalCommonExpenses / people.length;
-    
     const personBalances = people.map(person => {
       const personalExpenses = transactions
         .filter(t => t.category === 'personal' && t.spentBy === person.id)
         .reduce((sum, t) => sum + t.amount, 0);
       
-      // Total amount this person needs to pay (personal + their share of common)
-      const totalOwed = personalExpenses + commonPerPerson;
+      const commonExpenses = transactions
+        .filter(t => t.isCommonSplit && t.spentBy === person.id)
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const totalOwed = personalExpenses + commonExpenses;
       
       return {
         personId: person.id,
         personalExpenses,
-        commonExpenses: commonPerPerson,
+        commonExpenses,
         totalOwed
       };
     });
 
+    const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalCommonExpenses = transactions
+      .filter(t => t.isCommonSplit)
+      .reduce((sum, t) => sum + t.amount, 0);
+
     return {
       personBalances,
-      totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
+      totalAmount,
       totalCommonExpenses
     };
   };
@@ -114,8 +116,8 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
               `).join('')}
               <tr class="total">
                 <td>Total</td>
-                <td>₹${calculation.totalAmount - calculation.totalCommonExpenses}</td>
-                <td>₹${calculation.totalCommonExpenses}</td>
+                <td>₹${calculation.personBalances.reduce((sum, b) => sum + b.personalExpenses, 0).toFixed(2)}</td>
+                <td>₹${calculation.totalCommonExpenses.toFixed(2)}</td>
                 <td>₹${calculation.totalAmount.toFixed(2)}</td>
               </tr>
             </table>
@@ -132,11 +134,11 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                   <table>
                     <tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th></tr>
                     ${transactionsByPerson[person.id].map(transaction => `
-                      <tr class="${transaction.category}">
-                        <td>${transaction.date}</td>
-                        <td>${transaction.description}</td>
+                      <tr class="${transaction.isCommonSplit ? 'common' : 'personal'}">
+                        <td>${transaction.date} ${month} ${year}</td>
+                        <td>${transaction.description}${transaction.isCommonSplit ? ' (Common Split)' : ''}</td>
                         <td>₹${transaction.amount.toFixed(2)}</td>
-                        <td>${transaction.category}</td>
+                        <td>${transaction.isCommonSplit ? 'common' : transaction.category}</td>
                       </tr>
                     `).join('')}
                     <tr class="total">
@@ -182,7 +184,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
               <div className="text-sm text-muted-foreground">Common Expenses</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{transactions.length}</div>
+              <div className="text-2xl font-bold text-purple-600">{transactions.filter(t => !t.isCommonSplit || transactions.findIndex(orig => orig.description === t.description && orig.date === t.date && orig.isCommonSplit) === transactions.indexOf(t)).length}</div>
               <div className="text-sm text-muted-foreground">Transactions</div>
             </div>
           </div>
@@ -237,7 +239,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
             </h3>
             
             <div className="space-y-2">
-              {transactions.map(transaction => (
+              {transactions.filter(transaction => !transaction.isCommonSplit).map(transaction => (
                 <Card key={transaction.id} className="transition-all hover:shadow-sm">
                   <CardContent className="p-3">
                     <div className="flex items-center justify-between">
@@ -249,7 +251,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                           </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
-                          {getPersonName(transaction.spentBy)} • {transaction.date}
+                          {getPersonName(transaction.spentBy)} • {transaction.date} {month} {year}
                         </div>
                       </div>
                       <div className="text-lg font-semibold">
