@@ -16,7 +16,7 @@ Follow these steps:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
-git clone [https://github.com/syedd07/splitify](https://github.com/syedd07/splitify)
+git clone https://github.com/syedd07/splitify
 
 # Step 2: Navigate to the project directory.
 cd splitify
