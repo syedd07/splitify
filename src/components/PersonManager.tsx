@@ -1,0 +1,112 @@
+
+import React, { useState } from 'react';
+import { Plus, Trash2, Crown, User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Person } from '@/types/BillSplitter';
+
+interface PersonManagerProps {
+  people: Person[];
+  setPeople: React.Dispatch<React.SetStateAction<Person[]>>;
+}
+
+const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople }) => {
+  const [newPersonName, setNewPersonName] = useState('');
+
+  const addPerson = () => {
+    if (newPersonName.trim()) {
+      const newPerson: Person = {
+        id: Date.now().toString(),
+        name: newPersonName.trim(),
+        isCardOwner: people.length === 0 // First person is card owner
+      };
+      setPeople(prev => [...prev, newPerson]);
+      setNewPersonName('');
+    }
+  };
+
+  const removePerson = (id: string) => {
+    setPeople(prev => prev.filter(person => person.id !== id));
+  };
+
+  const setCardOwner = (id: string) => {
+    setPeople(prev => prev.map(person => ({
+      ...person,
+      isCardOwner: person.id === id
+    })));
+  };
+
+  return (
+    <Card className="max-w-2xl mx-auto">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <User className="w-5 h-5" />
+          Add People to Split
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Enter person's name"
+            value={newPersonName}
+            onChange={(e) => setNewPersonName(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && addPerson()}
+          />
+          <Button onClick={addPerson} disabled={!newPersonName.trim()}>
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {people.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm text-muted-foreground">
+              People ({people.length})
+            </h4>
+            {people.map((person) => (
+              <div key={person.id} className="flex items-center justify-between p-3 border rounded-lg bg-white/50">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{person.name}</span>
+                  {person.isCardOwner && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <Crown className="w-3 h-3" />
+                      Card Owner
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {!person.isCardOwner && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCardOwner(person.id)}
+                    >
+                      Make Card Owner
+                    </Button>
+                  )}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => removePerson(person.id)}
+                    disabled={people.length <= 2}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {people.length < 2 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Add at least 2 people to start splitting bills
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default PersonManager;
