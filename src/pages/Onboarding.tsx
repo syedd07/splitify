@@ -319,7 +319,7 @@ const Onboarding = () => {
                     )}
                     
                     {/* Card Actions */}
-                    <div className="flex justify-end gap-2">
+                    <div className="flex gap-2 mt-4">
                       <Button
                         variant="outline"
                         size="sm"
@@ -328,8 +328,9 @@ const Onboarding = () => {
                           openEditDialog(card);
                         }}
                         disabled={actionLoading}
+                        className="flex-1"
                       >
-                        <Edit className="w-4 h-4 mr-1" />
+                        <Edit className="w-4 h-4 mr-2" />
                         Edit
                       </Button>
                       
@@ -338,11 +339,11 @@ const Onboarding = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-red-600 hover:text-red-700"
+                            className="text-red-600 hover:text-red-700 flex-1"
                             onClick={(e) => e.stopPropagation()}
                             disabled={actionLoading}
                           >
-                            <Trash2 className="w-4 h-4 mr-1" />
+                            <Trash2 className="w-4 h-4 mr-2" />
                             Remove
                           </Button>
                         </AlertDialogTrigger>
