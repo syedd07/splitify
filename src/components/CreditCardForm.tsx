@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -290,7 +291,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           <div className="flex gap-3">
             <Button
               type="submit"
-              disabled={loading || !binInfo || !isConfirmed || validationError}
+              disabled={loading || !binInfo || !isConfirmed || Boolean(validationError)}
               className="flex-1 bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
             >
               {loading ? (
