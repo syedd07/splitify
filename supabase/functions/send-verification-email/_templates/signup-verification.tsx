@@ -32,11 +32,12 @@ export const SignupVerificationEmail = ({
 }: SignupVerificationEmailProps) => (
   <Html>
     <Head />
-    <Preview>Verify your email address for Credit Ease Divide</Preview>
+    <Preview>Verify your email address for Splitify!</Preview>
     <Body style={main}>
       <Container style={container}>
         <Section style={header}>
-          <Heading style={h1}>Welcome to Credit Ease Divide!</Heading>
+          <Heading style={h1}>Welcome to Splitify!</Heading>
+          <Text style={tagline}>Credit Ease Divide</Text>
         </Section>
         
         <Section style={content}>
@@ -63,7 +64,7 @@ export const SignupVerificationEmail = ({
           <Hr style={hr} />
           
           <Text style={footerText}>
-            If you didn't create an account with Credit Ease Divide, you can safely ignore this email.
+            If you didn't create an account with Splitify!, you can safely ignore this email.
           </Text>
           
           <Text style={footerText}>
@@ -73,7 +74,10 @@ export const SignupVerificationEmail = ({
         
         <Section style={footer}>
           <Text style={footerBrand}>
-            Credit Ease Divide - Split bills seamlessly with your friends and family
+            Splitify! - Split bills seamlessly with your friends and family
+          </Text>
+          <Text style={footerTagline}>
+            Credit Ease Divide
           </Text>
         </Section>
       </Container>
@@ -110,8 +114,16 @@ const content = {
 
 const h1 = {
   color: '#ffffff',
-  fontSize: '28px',
+  fontSize: '32px',
   fontWeight: 'bold',
+  margin: '0 0 8px 0',
+  textAlign: 'center' as const,
+}
+
+const tagline = {
+  color: '#e2e8f0',
+  fontSize: '16px',
+  fontWeight: '500',
   margin: '0',
   textAlign: 'center' as const,
 }
@@ -181,6 +193,13 @@ const footer = {
 const footerBrand = {
   color: '#64748b',
   fontSize: '14px',
+  fontWeight: 'bold',
+  margin: '0 0 4px 0',
+}
+
+const footerTagline = {
+  color: '#94a3b8',
+  fontSize: '12px',
   fontWeight: '500',
   margin: '0',
 }

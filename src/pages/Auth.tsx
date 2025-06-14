@@ -55,14 +55,25 @@ const Auth = () => {
         if (error) throw error;
 
         toast({
-          title: "Success!",
-          description: "Please check your email to verify your account.",
+          title: "Welcome to Splitify!",
+          description: "Please check your email to verify your account and complete the signup process.",
         });
       }
     } catch (error: any) {
+      let errorMessage = error.message;
+      
+      // Provide more user-friendly error messages
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (error.message.includes('User already registered')) {
+        errorMessage = 'This email is already registered. Please sign in instead or use a different email.';
+      } else if (error.message.includes('Password should be at least')) {
+        errorMessage = 'Password should be at least 6 characters long.';
+      }
+      
       toast({
         title: "Error",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -74,11 +85,16 @@ const Auth = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="flex items-center justify-center gap-3 mb-4">
             <CreditCard className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-              Credit Ease Divide
-            </h1>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                Splitify!
+              </h1>
+              <p className="text-sm text-muted-foreground font-medium">
+                Credit Ease Divide
+              </p>
+            </div>
           </div>
           <p className="text-muted-foreground">
             {isLogin ? 'Welcome back!' : 'Join us today!'}
