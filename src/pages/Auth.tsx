@@ -18,11 +18,31 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Check for authentication state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
+      console.log('Auth state changed:', event, session);
+      
+      if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in, redirecting to onboarding');
+        navigate('/onboarding');
+      }
+      
+      if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('Token refreshed, user authenticated');
         navigate('/onboarding');
       }
     });
+
+    // Check for existing session on component mount
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        console.log('Existing session found, redirecting to onboarding');
+        navigate('/onboarding');
+      }
+    };
+
+    checkSession();
 
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -40,6 +60,7 @@ const Auth = () => {
 
         if (error) throw error;
       } else {
+        // For signup, use the explicit redirect URL
         const { error } = await supabase.auth.signUp({
           email,
           password,
