@@ -47,7 +47,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddExpense = () => {
-    if (!amount || !description || !date || !spentBy) {
+    if (!amount || !description || !date) {
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields.",
@@ -56,22 +56,60 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    const transaction: Omit<Transaction, 'id'> = {
-      amount: parseFloat(amount),
-      description,
-      date,
-      type: 'expense',
-      category,
-      spentBy,
-      creditCardId: selectedCard?.id
-    };
+    // For common expenses, spentBy is not required (will be split among all)
+    // For personal expenses, spentBy is required
+    if (category === 'personal' && !spentBy) {
+      toast({
+        title: "Missing Information",
+        description: "Please select who spent this amount.",
+        variant: "destructive"
+      });
+      return;
+    }
 
-    onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
+    if (category === 'common') {
+      // Create individual transactions for each person with equal split
+      const splitAmount = parseFloat(amount) / people.length;
+      
+      people.forEach(person => {
+        const transaction: Omit<Transaction, 'id'> = {
+          amount: splitAmount,
+          description,
+          date,
+          type: 'expense',
+          category: 'personal', // Store as personal but mark as common split
+          spentBy: person.id,
+          creditCardId: selectedCard?.id,
+          isCommonSplit: true // Flag to identify this was originally a common expense
+        };
+
+        onAddTransaction({ ...transaction, id: `${Date.now()}-${person.id}` } as Transaction);
+      });
+
+      toast({
+        title: "Common Expense Added",
+        description: `₹${amount} expense for ${description} has been split equally among ${people.length} people (₹${splitAmount.toFixed(2)} each).`
+      });
+    } else {
+      // Personal expense
+      const transaction: Omit<Transaction, 'id'> = {
+        amount: parseFloat(amount),
+        description,
+        date,
+        type: 'expense',
+        category,
+        spentBy,
+        creditCardId: selectedCard?.id
+      };
+
+      onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
+      toast({
+        title: "Expense Added",
+        description: `₹${amount} expense for ${description} has been recorded.`
+      });
+    }
+
     resetForm();
-    toast({
-      title: "Expense Added",
-      description: `₹${amount} expense for ${description} has been recorded.`
-    });
   };
 
   const handleAddPayment = () => {
@@ -192,10 +230,20 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Spent by</label>
-                  <Select value={spentBy} onValueChange={setSpentBy}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Who spent this?" />
+                  <label className="block text-sm font-medium mb-2">
+                    Spent by {category === 'common' && '(Will be split equally)'}
+                  </label>
+                  <Select 
+                    value={spentBy} 
+                    onValueChange={setSpentBy}
+                    disabled={category === 'common'}
+                  >
+                    <SelectTrigger className={category === 'common' ? 'opacity-50' : ''}>
+                      <SelectValue placeholder={
+                        category === 'common' 
+                          ? "Split among all people" 
+                          : "Who spent this?"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       {people.map((person) => (
@@ -208,7 +256,12 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
-                  <Select value={category} onValueChange={(value: 'personal' | 'common') => setCategory(value)}>
+                  <Select value={category} onValueChange={(value: 'personal' | 'common') => {
+                    setCategory(value);
+                    if (value === 'common') {
+                      setSpentBy(''); // Clear spentBy when switching to common
+                    }
+                  }}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -329,7 +382,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                                 variant={transaction.isCommonSplit ? 'default' : 'secondary'}
                                 className="text-xs"
                               >
-                                {transaction.isCommonSplit ? 'Common' : transaction.category}
+                                {transaction.isCommonSplit ? 'Common Split' : transaction.category}
                               </Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
