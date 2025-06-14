@@ -32,8 +32,9 @@ export const createCommonExpense = ({
   // Create individual transactions for each person
   people.forEach((person, index) => {
     const baseTimestamp = Date.now();
-    // Add index and person ID to ensure uniqueness
-    const uniqueId = `common-${baseTimestamp}-${index}-${person.id}-${Math.random().toString(36).substr(2, 9)}`;
+    // Add a small delay to ensure unique timestamps
+    const uniqueTimestamp = baseTimestamp + index;
+    const uniqueId = `common-${uniqueTimestamp}-${index}-${person.id}-${Math.random().toString(36).substr(2, 9)}`;
     
     const transaction: Transaction = {
       id: uniqueId,
@@ -42,7 +43,7 @@ export const createCommonExpense = ({
       date,
       type: 'expense',
       category: 'personal', // Individual portion of common expense
-      spentBy: person.id, // Use the actual person.id consistently
+      spentBy: person.id,
       creditCardId: selectedCard?.id,
       isCommonSplit: true
     };
@@ -52,12 +53,16 @@ export const createCommonExpense = ({
       person: person.name,
       personId: person.id,
       amount: transaction.amount,
-      spentBy: transaction.spentBy
+      spentBy: transaction.spentBy,
+      isCommonSplit: transaction.isCommonSplit,
+      category: transaction.category
     });
 
-    // Add transaction immediately
-    onAddTransaction(transaction);
-    console.log(`Added transaction for ${person.name} with ID: ${transaction.id}`);
+    // Add transaction immediately with a small delay to ensure proper state updates
+    setTimeout(() => {
+      onAddTransaction(transaction);
+      console.log(`Added transaction for ${person.name} with ID: ${transaction.id}`);
+    }, index * 10); // 10ms delay between each transaction
   });
 
   toast({

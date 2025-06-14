@@ -22,6 +22,19 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
 }) => {
   const { toast } = useToast();
 
+  // Add debugging for transactions
+  console.log('=== CALCULATION SUMMARY DEBUG ===');
+  console.log('All transactions received:', transactions.length);
+  console.log('Transactions:', transactions.map(t => ({
+    id: t.id,
+    amount: t.amount,
+    description: t.description,
+    spentBy: t.spentBy,
+    isCommonSplit: t.isCommonSplit,
+    type: t.type
+  })));
+  console.log('People:', people.map(p => ({ id: p.id, name: p.name })));
+
   // Helper function to format date as "12 Jun 25"
   const formatDate = (date: string, month: string, year: string) => {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -39,22 +52,45 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   };
 
   const calculateBalances = (): PersonBalance[] => {
+    console.log('=== BALANCE CALCULATION DEBUG ===');
+    
     return people.map(person => {
+      console.log(`Calculating for person: ${person.name} (ID: ${person.id})`);
+      
       const personalExpenses = transactions
-        .filter(t => t.type === 'expense' && t.spentBy === person.id && !t.isCommonSplit)
+        .filter(t => {
+          const match = t.type === 'expense' && t.spentBy === person.id && !t.isCommonSplit;
+          if (match) console.log(`Personal expense for ${person.name}:`, t);
+          return match;
+        })
         .reduce((sum, t) => sum + t.amount, 0);
       
-      // For common expenses, each person gets their share (the split amount)
       const commonExpenses = transactions
-        .filter(t => t.type === 'expense' && t.isCommonSplit && t.spentBy === person.id)
+        .filter(t => {
+          const match = t.type === 'expense' && t.isCommonSplit === true && t.spentBy === person.id;
+          if (match) console.log(`Common expense for ${person.name}:`, t);
+          return match;
+        })
         .reduce((sum, t) => sum + t.amount, 0);
 
       const totalPayments = transactions
-        .filter(t => t.type === 'payment' && t.spentBy === person.id)
+        .filter(t => {
+          const match = t.type === 'payment' && t.spentBy === person.id;
+          if (match) console.log(`Payment for ${person.name}:`, t);
+          return match;
+        })
         .reduce((sum, t) => sum + t.amount, 0);
       
       const totalExpenses = personalExpenses + commonExpenses;
       const netBalance = totalExpenses - totalPayments;
+
+      console.log(`${person.name} balance:`, {
+        personalExpenses,
+        commonExpenses,
+        totalExpenses,
+        totalPayments,
+        netBalance
+      });
 
       return {
         personId: person.id,
@@ -72,6 +108,13 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   const totalPayments = balances.reduce((sum, b) => sum + b.totalPayments, 0);
   const totalCommonExpenses = balances.reduce((sum, b) => sum + b.commonExpenses, 0);
   const outstandingBalance = totalExpenses - totalPayments;
+
+  console.log('=== SUMMARY TOTALS ===');
+  console.log('Total expenses:', totalExpenses);
+  console.log('Total payments:', totalPayments);
+  console.log('Total common expenses:', totalCommonExpenses);
+  console.log('Outstanding balance:', outstandingBalance);
+  console.log('=== END CALCULATION DEBUG ===');
 
   // Sort transactions by date in descending order (latest first)
   const sortTransactionsByDate = (transactions: Transaction[]) => {
