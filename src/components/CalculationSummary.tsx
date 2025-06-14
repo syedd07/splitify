@@ -44,6 +44,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
         .filter(t => t.type === 'expense' && t.spentBy === person.id && !t.isCommonSplit)
         .reduce((sum, t) => sum + t.amount, 0);
       
+      // For common expenses, each person gets their share (the split amount)
       const commonExpenses = transactions
         .filter(t => t.type === 'expense' && t.isCommonSplit && t.spentBy === person.id)
         .reduce((sum, t) => sum + t.amount, 0);
