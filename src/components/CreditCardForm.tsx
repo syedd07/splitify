@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { CreditCard, Loader2, CheckCircle, AlertCircle, X, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -79,7 +79,8 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           type: data.type || 'Unknown',
           country: data.country || 'Unknown',
           bank: data.bank || 'Unknown',
-          valid: Boolean(data.valid !== false && !data.error)
+          valid: Boolean(data.valid !== false && !data.error),
+          source: data.source || 'api'
         });
       }
     } catch (error) {
@@ -220,21 +221,33 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                   <h4 className="font-semibold text-gray-800">Valid Card Detected</h4>
+                  {binInfo.source === 'fallback' && (
+                    <Badge variant="secondary" className="ml-auto flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Basic Detection
+                    </Badge>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Card Brand:</span>
-                    <p className="font-medium">{binInfo.brand}</p>
+                    <p className="font-medium">
+                      {binInfo.brand === 'Unknown' ? 'Card Detected' : binInfo.brand}
+                    </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Card Type:</span>
-                    <p className="font-medium">{binInfo.type}</p>
+                    <p className="font-medium">
+                      {binInfo.type === 'Unknown' ? 'Credit/Debit' : binInfo.type}
+                    </p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Country:</span>
-                    <p className="font-medium">{binInfo.country}</p>
-                  </div>
+                  {binInfo.country !== 'Unknown' && (
+                    <div>
+                      <span className="text-muted-foreground">Country:</span>
+                      <p className="font-medium">{binInfo.country}</p>
+                    </div>
+                  )}
                   {binInfo.bank && binInfo.bank !== 'Unknown' && (
                     <div>
                       <span className="text-muted-foreground">Bank:</span>
@@ -242,6 +255,13 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
                     </div>
                   )}
                 </div>
+
+                {binInfo.source === 'fallback' && (
+                  <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-blue-700">
+                    <Info className="w-3 h-3 inline mr-1" />
+                    Card verified using basic pattern recognition. Some details may be limited.
+                  </div>
+                )}
 
                 <div className="mt-4 flex items-center gap-3">
                   <Button
