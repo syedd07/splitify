@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Download, Calculator, Users, Receipt, CreditCard, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,22 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   year
 }) => {
   const { toast } = useToast();
+
+  // Helper function to format date as "12 Jun 25"
+  const formatDate = (date: string, month: string, year: string) => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthIndex = parseInt(month) - 1;
+    const shortYear = year.slice(-2);
+    return `${date} ${monthNames[monthIndex]} ${shortYear}`;
+  };
+
+  // Helper function to get full month name
+  const getFullMonthName = (month: string) => {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+    return monthNames[parseInt(month) - 1];
+  };
 
   const calculateBalances = (): PersonBalance[] => {
     return people.map(person => {
@@ -82,7 +99,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Credit Card Bill Split - ${month} ${year}</title>
+          <title>Credit Card Bill Split - ${getFullMonthName(month)} ${year}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
             .header { text-align: center; margin-bottom: 30px; }
@@ -116,7 +133,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
         <body>
           <div class="header">
             <h1>Credit Card Bill Split Summary</h1>
-            <h2>${month} ${year}</h2>
+            <h2>${getFullMonthName(month)} ${year}</h2>
             <p>Generated on ${new Date().toLocaleDateString()}</p>
           </div>
           
@@ -195,7 +212,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                     <tbody>
                       ${personExpenses.map(transaction => `
                         <tr class="expense">
-                          <td>${transaction.date} ${month} ${year}</td>
+                          <td>${formatDate(transaction.date, month, year)}</td>
                           <td>${transaction.description}${transaction.isCommonSplit ? ' (Common Split)' : ''}</td>
                           <td>₹${transaction.amount.toFixed(2)}</td>
                           <td>${transaction.isCommonSplit ? 'Common' : transaction.category}</td>
@@ -235,7 +252,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                     <tbody>
                       ${personPayments.map(transaction => `
                         <tr class="payment">
-                          <td>${transaction.date} ${month} ${year}</td>
+                          <td>${formatDate(transaction.date, month, year)}</td>
                           <td>${transaction.description}</td>
                           <td>₹${transaction.amount.toFixed(2)}</td>
                         </tr>
@@ -266,7 +283,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
       printWindow.print();
       toast({
         title: "PDF Ready",
-        description: `Bill split summary for ${month} ${year} is ready for download.`
+        description: `Bill split summary for ${getFullMonthName(month)} ${year} is ready for download.`
       });
     }, 500);
   };
@@ -278,7 +295,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Calculator className="w-5 h-5" />
-              Bill Split Summary - {month} {year}
+              Bill Split Summary - {getFullMonthName(month)} {year}
             </CardTitle>
             <Button 
               onClick={generatePDF}
@@ -389,7 +406,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {person?.name} • {transaction.date} {month} {year}
+                                {person?.name} • {formatDate(transaction.date, month, year)}
                               </div>
                             </div>
                             <div className="text-sm font-semibold text-blue-600">
@@ -424,7 +441,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {person?.name} • {transaction.date} {month} {year}
+                                {person?.name} • {formatDate(transaction.date, month, year)}
                               </div>
                             </div>
                             <div className="text-sm font-semibold text-green-600">
