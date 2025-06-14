@@ -173,7 +173,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           </div>
 
           <div class="section">
-            <h3>💳 Expense Transactions (Latest First)</h3>
+            <h3>💳 Expense Transactions</h3>
             ${people.map(person => {
               const personExpenses = sortTransactionsByDate(expenseTransactions.filter(t => t.spentBy === person.id));
               if (personExpenses.length === 0) return '';
@@ -214,7 +214,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           </div>
 
           <div class="section">
-            <h3>💰 Payment Transactions (Latest First)</h3>
+            <h3>💰 Payment Transactions</h3>
             ${people.map(person => {
               const personPayments = sortTransactionsByDate(paymentTransactions.filter(t => t.spentBy === person.id));
               if (personPayments.length === 0) return '';
@@ -361,7 +361,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Receipt className="w-5 h-5" />
-              Transaction Details (Latest First)
+              Transaction Details
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

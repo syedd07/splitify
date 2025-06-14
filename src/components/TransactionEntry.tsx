@@ -1,15 +1,13 @@
 
 import React, { useState } from 'react';
-import { Plus, Calendar, DollarSign, Tag, Users, Trash2, CreditCard, Banknote } from 'lucide-react';
+import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
 
 interface TransactionEntryProps {
@@ -21,470 +19,357 @@ interface TransactionEntryProps {
   year: string;
 }
 
-const TransactionEntry: React.FC<TransactionEntryProps> = ({ 
-  people, 
+const TransactionEntry: React.FC<TransactionEntryProps> = ({
+  people,
   onAddTransaction,
   onDeleteTransaction,
   transactions,
   month,
   year
 }) => {
+  const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
-  const [transactionType, setTransactionType] = useState<'expense' | 'payment'>('expense');
-  const [category, setCategory] = useState<'personal' | 'common'>('personal');
   const [spentBy, setSpentBy] = useState('');
+  const [category, setCategory] = useState<'personal' | 'common'>('personal');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (amount && description && date && spentBy) {
-      const transaction: Transaction = {
-        id: '',
-        amount: parseFloat(amount),
-        description,
-        date,
-        type: transactionType,
-        category: transactionType === 'payment' ? 'personal' : category,
-        spentBy: transactionType === 'expense' && category === 'common' ? 'common' : spentBy,
-        splitBetween: transactionType === 'expense' && category === 'common' ? people.map(p => p.id) : undefined
-      };
-      onAddTransaction(transaction);
-      setAmount('');
-      setDescription('');
-      setDate('');
-      setSpentBy('');
-    }
+  const resetForm = () => {
+    setAmount('');
+    setDescription('');
+    setDate('');
+    setSpentBy('');
+    setCategory('personal');
   };
 
-  const getPersonName = (id: string) => {
-    if (id === 'common') return 'Common Expense';
-    return people.find(p => p.id === id)?.name || '';
+  const handleAddExpense = () => {
+    if (!amount || !description || !date || !spentBy) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all fields to add an expense.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const transaction: Omit<Transaction, 'id'> = {
+      amount: parseFloat(amount),
+      description,
+      date,
+      type: 'expense',
+      category,
+      spentBy
+    };
+
+    onAddTransaction(transaction as Transaction);
+    resetForm();
+    toast({
+      title: "Expense Added",
+      description: `₹${amount} expense for ${description} has been recorded.`
+    });
   };
 
-  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const totalPayments = transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0);
-
-  // Group transactions for display
-  const displayTransactions = transactions.reduce((acc: Transaction[], transaction) => {
-    if (transaction.isCommonSplit) {
-      const existingCommon = acc.find(t => 
-        t.description === transaction.description && 
-        t.date === transaction.date && 
-        t.category === 'common' &&
-        !t.isCommonSplit
-      );
-      
-      if (!existingCommon) {
-        const originalAmount = people.length * transaction.amount;
-        acc.push({
-          ...transaction,
-          id: `common-${transaction.description}-${transaction.date}`,
-          amount: originalAmount,
-          spentBy: 'common',
-          isCommonSplit: false
-        });
-      }
-    } else {
-      acc.push(transaction);
+  const handleAddPayment = () => {
+    if (!amount || !description || !date || !spentBy) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all fields to add a payment.",
+        variant: "destructive"
+      });
+      return;
     }
-    return acc;
-  }, []);
 
-  const expenseTransactions = displayTransactions.filter(t => t.type === 'expense');
-  const paymentTransactions = displayTransactions.filter(t => t.type === 'payment');
+    const transaction: Omit<Transaction, 'id'> = {
+      amount: parseFloat(amount),
+      description,
+      date,
+      type: 'payment',
+      category: 'personal', // Payments are always personal
+      spentBy
+    };
+
+    onAddTransaction(transaction as Transaction);
+    resetForm();
+    toast({
+      title: "Payment Added",
+      description: `₹${amount} payment for ${description} has been recorded.`
+    });
+  };
+
+  // Sort transactions by date in descending order (latest first)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const dateA = parseInt(a.date);
+    const dateB = parseInt(b.date);
+    return dateB - dateA; // Descending order (latest dates first)
+  });
+
+  const expenseTransactions = sortedTransactions.filter(t => t.type === 'expense');
+  const paymentTransactions = sortedTransactions.filter(t => t.type === 'payment');
+
+  // Get days in month for date selection
+  const getDaysInMonth = () => {
+    const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
+    const daysInMonth = new Date(parseInt(year), monthIndex + 1, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
+  };
 
   return (
     <div className="space-y-6">
-      <Tabs value={transactionType} onValueChange={(value: 'expense' | 'payment') => {
-        setTransactionType(value);
-        setCategory('personal');
-        setSpentBy('');
-      }}>
+      <Tabs defaultValue="expense" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="expense" className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4" />
+            <Receipt className="w-4 h-4" />
             Add Expense
           </TabsTrigger>
           <TabsTrigger value="payment" className="flex items-center gap-2">
             <Banknote className="w-4 h-4" />
-            Record Payment
+            Add Payment
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="expense" className="space-y-4">
-          <Card className="border-blue-200 bg-blue-50/30">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-blue-700 flex items-center gap-2">
-                <CreditCard className="w-5 h-5" />
-                Add New Expense
-              </CardTitle>
+              <CardTitle className="text-lg">Record Expense</CardTitle>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount" className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" />
-                      Amount (₹)
-                    </Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="date" className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      Date
-                    </Label>
-                    <Input
-                      id="date"
-                      type="number"
-                      min="1"
-                      max="31"
-                      placeholder="DD"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description" className="flex items-center gap-2">
-                    <Tag className="w-4 h-4" />
-                    Description
-                  </Label>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Amount (₹)</label>
                   <Input
-                    id="description"
-                    placeholder="What was this expense for?"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
+                    type="number"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
                   />
                 </div>
-
-                <div className="space-y-3">
-                  <Label>Category</Label>
-                  <RadioGroup value={category} onValueChange={(value: 'personal' | 'common') => {
-                    setCategory(value);
-                    if (value === 'common') {
-                      setSpentBy('');
-                    }
-                  }}>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="personal" id="personal" />
-                      <Label htmlFor="personal">Personal Expense</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="common" id="common" />
-                      <Label htmlFor="common">Common Expense (Split Equally)</Label>
-                    </div>
-                  </RadioGroup>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Date</label>
+                  <Select value={date} onValueChange={setDate}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select date" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getDaysInMonth().map((day) => (
+                        <SelectItem key={day} value={day}>{day}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
 
-                {category === 'personal' && (
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Who spent this?
-                    </Label>
-                    <Select value={spentBy} onValueChange={setSpentBy}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select person" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {people.map((person) => (
-                          <SelectItem key={person.id} value={person.id}>
-                            {person.name}
-                            {person.isCardOwner && ' (Card Owner)'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <Input
+                  placeholder="What was this expense for?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
 
-                {category === 'common' && (
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-600">
-                      This expense will be split equally among all {people.length} people (₹{amount ? (parseFloat(amount) / people.length).toFixed(2) : '0.00'} each)
-                    </p>
-                  </div>
-                )}
-
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Expense
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="payment" className="space-y-4">
-          <Card className="border-green-200 bg-green-50/30">
-            <CardHeader>
-              <CardTitle className="text-green-700 flex items-center gap-2">
-                <Banknote className="w-5 h-5" />
-                Record Payment
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount" className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" />
-                      Payment Amount (₹)
-                    </Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="date" className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      Payment Date
-                    </Label>
-                    <Input
-                      id="date"
-                      type="number"
-                      min="1"
-                      max="31"
-                      placeholder="DD"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description" className="flex items-center gap-2">
-                    <Tag className="w-4 h-4" />
-                    Payment Description
-                  </Label>
-                  <Input
-                    id="description"
-                    placeholder="e.g., Partial payment, Full settlement, etc."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Who made this payment?
-                  </Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Spent by</label>
                   <Select value={spentBy} onValueChange={setSpentBy}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select person" />
+                      <SelectValue placeholder="Who spent this?" />
                     </SelectTrigger>
                     <SelectContent>
                       {people.map((person) => (
                         <SelectItem key={person.id} value={person.id}>
-                          {person.name}
-                          {person.isCardOwner && ' (Card Owner)'}
+                          {person.name} {person.isCardOwner && '(Card Owner)'}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <p className="text-sm text-green-600">
-                    This payment will reduce the selected person's outstanding balance.
-                  </p>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Category</label>
+                  <Select value={category} onValueChange={(value: 'personal' | 'common') => setCategory(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="personal">Personal</SelectItem>
+                      <SelectItem value="common">Common (Split Equally)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
 
-                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Record Payment
-                </Button>
-              </form>
+              <Button onClick={handleAddExpense} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Expense
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payment" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Record Payment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Amount (₹)</label>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Date</label>
+                  <Select value={date} onValueChange={setDate}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select date" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getDaysInMonth().map((day) => (
+                        <SelectItem key={day} value={day}>{day}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <Input
+                  placeholder="Payment description (e.g., Credit card payment, UPI transfer)"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Paid by</label>
+                <Select value={spentBy} onValueChange={setSpentBy}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Who made this payment?" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {people.map((person) => (
+                      <SelectItem key={person.id} value={person.id}>
+                        {person.name} {person.isCardOwner && '(Card Owner)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button onClick={handleAddPayment} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Payment
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Transaction Summary */}
-      {displayTransactions.length > 0 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="border-blue-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">₹{totalExpenses.toFixed(2)}</div>
-                <div className="text-sm text-muted-foreground">Total Expenses</div>
-              </CardContent>
-            </Card>
-            <Card className="border-green-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">₹{totalPayments.toFixed(2)}</div>
-                <div className="text-sm text-muted-foreground">Total Payments</div>
-              </CardContent>
-            </Card>
-            <Card className="border-orange-200">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-orange-600">₹{(totalExpenses - totalPayments).toFixed(2)}</div>
-                <div className="text-sm text-muted-foreground">Outstanding Balance</div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Transaction History</h3>
-            
-            {expenseTransactions.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-medium text-blue-700 flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" />
+      {/* Transaction History */}
+      {transactions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              Transaction History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="expenses" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="expenses">
                   Expenses ({expenseTransactions.length})
-                </h4>
-                {expenseTransactions.map((transaction) => (
-                  <Card key={transaction.id} className="transition-all hover:shadow-md border-blue-100">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">{transaction.description}</span>
-                            <Badge variant={transaction.category === 'common' ? 'default' : 'secondary'}>
-                              {transaction.category === 'common' ? 'Common' : 'Personal'}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {getPersonName(transaction.spentBy)} • {transaction.date} {month} {year}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-lg font-semibold text-blue-600">
-                            ₹{transaction.amount.toFixed(2)}
-                          </div>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this transaction? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction 
-                                  onClick={() => {
-                                    if (transaction.category === 'common') {
-                                      const relatedTransactions = transactions.filter(t => 
-                                        t.description === transaction.description && 
-                                        t.date === transaction.date && 
-                                        t.isCommonSplit
-                                      );
-                                      relatedTransactions.forEach(t => onDeleteTransaction(t.id));
-                                    } else {
-                                      onDeleteTransaction(transaction.id);
-                                    }
-                                  }}
-                                  className="bg-red-600 hover:bg-red-700"
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {paymentTransactions.length > 0 && (
-              <div className="space-y-2 mt-4">
-                <h4 className="font-medium text-green-700 flex items-center gap-2">
-                  <Banknote className="w-4 h-4" />
+                </TabsTrigger>
+                <TabsTrigger value="payments">
                   Payments ({paymentTransactions.length})
-                </h4>
-                {paymentTransactions.map((transaction) => (
-                  <Card key={transaction.id} className="transition-all hover:shadow-md border-green-100">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">{transaction.description}</span>
-                            <Badge variant="outline" className="border-green-600 text-green-600">
-                              Payment
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {getPersonName(transaction.spentBy)} • {transaction.date} {month} {year}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-lg font-semibold text-green-600">
-                            ₹{transaction.amount.toFixed(2)}
-                          </div>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="expenses" className="space-y-2 mt-4">
+                {expenseTransactions.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">No expenses recorded yet</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {expenseTransactions.map(transaction => {
+                      const person = people.find(p => p.id === transaction.spentBy);
+                      return (
+                        <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{transaction.description}</span>
+                              <Badge 
+                                variant={transaction.isCommonSplit ? 'default' : 'secondary'}
+                                className="text-xs"
                               >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Payment</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this payment record? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction 
-                                  onClick={() => onDeleteTransaction(transaction.id)}
-                                  className="bg-red-600 hover:bg-red-700"
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                                {transaction.isCommonSplit ? 'Common' : transaction.category}
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {person?.name} • {transaction.date} {month} {year}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-blue-600">₹{transaction.amount.toFixed(2)}</span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => onDeleteTransaction(transaction.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="payments" className="space-y-2 mt-4">
+                {paymentTransactions.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">No payments recorded yet</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {paymentTransactions.map(transaction => {
+                      const person = people.find(p => p.id === transaction.spentBy);
+                      return (
+                        <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{transaction.description}</span>
+                              <Badge variant="outline" className="text-xs border-green-600 text-green-600">
+                                Payment
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {person?.name} • {transaction.date} {month} {year}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-green-600">₹{transaction.amount.toFixed(2)}</span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => onDeleteTransaction(transaction.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
