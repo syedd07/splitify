@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,21 +47,6 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleAddPerson = (name: string) => {
-    const newPerson: Person = {
-      id: Date.now().toString(),
-      name,
-      isCardOwner: people.length === 0 // First person is card owner
-    };
-    setPeople([...people, newPerson]);
-  };
-
-  const handleDeletePerson = (id: string) => {
-    setPeople(people.filter(person => person.id !== id));
-    // Also remove transactions for this person
-    setTransactions(transactions.filter(transaction => transaction.spentBy !== id));
-  };
-
   const handleAddTransaction = (transaction: Omit<Transaction, 'id'>) => {
     const newTransaction: Transaction = {
       ...transaction,
@@ -69,10 +55,17 @@ const Index = () => {
     setTransactions([...transactions, newTransaction]);
   };
 
+  const handleDeleteTransaction = (transactionId: string) => {
+    setTransactions(transactions.filter(transaction => transaction.id !== transactionId));
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/auth');
   };
+
+  // Get card owner name from user data
+  const cardOwnerName = user?.user_metadata?.full_name || user?.email || 'Card Owner';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
@@ -132,8 +125,8 @@ const Index = () => {
             <CardContent>
               <PersonManager 
                 people={people} 
-                onAddPerson={handleAddPerson} 
-                onDeletePerson={handleDeletePerson} 
+                setPeople={setPeople}
+                cardOwnerName={cardOwnerName}
               />
             </CardContent>
           </Card>
@@ -149,7 +142,11 @@ const Index = () => {
             <CardContent>
               <TransactionEntry 
                 people={people} 
-                onAddTransaction={handleAddTransaction} 
+                onAddTransaction={handleAddTransaction}
+                onDeleteTransaction={handleDeleteTransaction}
+                transactions={transactions}
+                month={currentMonth}
+                year={currentYear}
               />
             </CardContent>
           </Card>
