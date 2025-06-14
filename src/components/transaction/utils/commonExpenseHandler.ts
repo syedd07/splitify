@@ -42,7 +42,7 @@ export const createCommonExpense = ({
       date,
       type: 'expense',
       category: 'personal', // Individual portion of common expense
-      spentBy: person.id,
+      spentBy: person.id, // Use the actual person.id consistently
       creditCardId: selectedCard?.id,
       isCommonSplit: true
     };
@@ -50,6 +50,7 @@ export const createCommonExpense = ({
     console.log(`Creating transaction ${index + 1} for ${person.name}:`, {
       id: transaction.id,
       person: person.name,
+      personId: person.id,
       amount: transaction.amount,
       spentBy: transaction.spentBy
     });
