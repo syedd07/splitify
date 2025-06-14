@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,18 +9,14 @@ import { useNavigate } from 'react-router-dom';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
-import type { Person, Transaction } from '@/types/BillSplitter';
+import type { Person, Transaction, CalculationResult } from '@/types/BillSplitter';
 
 const Index = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [calculationResults, setCalculationResults] = useState<CalculationResult[]>([]);
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
-
-  // Set current month and year for the calculation summary
-  const currentDate = new Date();
-  const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
-  const currentYear = currentDate.getFullYear().toString();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -47,25 +41,49 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleAddTransaction = (transaction: Omit<Transaction, 'id'>) => {
-    const newTransaction: Transaction = {
-      ...transaction,
-      id: Date.now().toString(),
-    };
+  const addPerson = (newPerson: Person) => {
+    setPeople([...people, newPerson]);
+  };
+
+  const deletePerson = (id: string) => {
+    setPeople(people.filter(person => person.id !== id));
+  };
+
+  const addTransaction = (newTransaction: Transaction) => {
     setTransactions([...transactions, newTransaction]);
   };
 
-  const handleDeleteTransaction = (transactionId: string) => {
-    setTransactions(transactions.filter(transaction => transaction.id !== transactionId));
+  const deleteTransaction = (id: string) => {
+    setTransactions(transactions.filter(transaction => transaction.id !== id));
+  };
+
+  const calculateBalances = () => {
+    // Aggregate amounts paid by each person
+    const personPayments: { [personId: string]: number } = {};
+    people.forEach(person => personPayments[person.id] = 0); // Initialize all to 0
+
+    transactions.forEach(transaction => {
+      personPayments[transaction.paidBy] += transaction.amount;
+    });
+
+    // Calculate each person's share
+    const totalBill = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+    const individualShare = totalBill / people.length;
+
+    // Determine who owes whom
+    const newCalculationResults: CalculationResult[] = [];
+    people.forEach(person => {
+      const amountOwed = personPayments[person.id] - individualShare;
+      newCalculationResults.push({ personId: person.id, amountOwed });
+    });
+
+    setCalculationResults(newCalculationResults);
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/auth');
   };
-
-  // Get card owner name from user data
-  const cardOwnerName = user?.user_metadata?.full_name || user?.email || 'Card Owner';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
@@ -92,7 +110,7 @@ const Index = () => {
                 </Button>
               </>
             ) : (
-              <Button onClick={() => navigate('/auth')} variant="outline" size="sm">
+              <Button onClick={() => navigate('/auth?mode=signup')} variant="outline" size="sm">
                 <User className="w-4 h-4 mr-2" />
                 Sign Up
               </Button>
@@ -123,11 +141,7 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <PersonManager 
-                people={people} 
-                setPeople={setPeople}
-                cardOwnerName={cardOwnerName}
-              />
+              <PersonManager people={people} addPerson={addPerson} deletePerson={deletePerson} />
             </CardContent>
           </Card>
 
@@ -140,14 +154,7 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <TransactionEntry 
-                people={people} 
-                onAddTransaction={handleAddTransaction}
-                onDeleteTransaction={handleDeleteTransaction}
-                transactions={transactions}
-                month={currentMonth}
-                year={currentYear}
-              />
+              <TransactionEntry people={people} addTransaction={addTransaction} />
             </CardContent>
           </Card>
 
@@ -160,12 +167,7 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <CalculationSummary 
-                people={people}
-                transactions={transactions}
-                month={currentMonth}
-                year={currentYear}
-              />
+              <CalculationSummary calculationResults={calculationResults} people={people} calculateBalances={calculateBalances} />
             </CardContent>
           </Card>
         </div>
