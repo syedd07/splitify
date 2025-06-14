@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
+import { Plus, Trash2, Receipt, Banknote, Calendar, CreditCard as CreditCardIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Transaction, Person } from '@/types/BillSplitter';
+import { Transaction, Person, CreditCard } from '@/types/BillSplitter';
 
 interface TransactionEntryProps {
   people: Person[];
+  creditCards: CreditCard[];
   onAddTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
   transactions: Transaction[];
@@ -21,6 +21,7 @@ interface TransactionEntryProps {
 
 const TransactionEntry: React.FC<TransactionEntryProps> = ({
   people,
+  creditCards,
   onAddTransaction,
   onDeleteTransaction,
   transactions,
@@ -32,6 +33,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
   const [spentBy, setSpentBy] = useState('');
+  const [creditCardId, setCreditCardId] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
 
   const resetForm = () => {
@@ -39,14 +41,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     setDescription('');
     setDate('');
     setSpentBy('');
+    setCreditCardId('');
     setCategory('personal');
   };
 
   const handleAddExpense = () => {
-    if (!amount || !description || !date || !spentBy) {
+    if (!amount || !description || !date || !spentBy || !creditCardId) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all fields to add an expense.",
+        description: "Please fill in all fields including the credit card used.",
         variant: "destructive"
       });
       return;
@@ -58,10 +61,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       date,
       type: 'expense',
       category,
-      spentBy
+      spentBy,
+      creditCardId
     };
 
-    onAddTransaction(transaction as Transaction);
+    onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
     resetForm();
     toast({
       title: "Expense Added",
@@ -88,7 +92,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       spentBy
     };
 
-    onAddTransaction(transaction as Transaction);
+    onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
     resetForm();
     toast({
       title: "Payment Added",
@@ -112,6 +116,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                        'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
     const daysInMonth = new Date(parseInt(year), monthIndex + 1, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
+  };
+
+  const getCreditCardDisplay = (cardId: string) => {
+    const card = creditCards.find(c => c.id === cardId);
+    return card ? `${card.card_name} (*${card.last_four_digits})` : 'Unknown Card';
   };
 
   return (
@@ -196,6 +205,29 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                  <CreditCardIcon className="w-4 h-4" />
+                  Credit Card Used
+                </label>
+                <Select value={creditCardId} onValueChange={setCreditCardId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select credit card" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {creditCards.map((card) => (
+                      <SelectItem key={card.id} value={card.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{card.card_name}</span>
+                          <span className="text-muted-foreground">(*{card.last_four_digits})</span>
+                          {card.is_primary && <Badge variant="secondary" className="text-xs">Primary</Badge>}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <Button onClick={handleAddExpense} className="w-full">
@@ -312,6 +344,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {person?.name} • {transaction.date} {month} {year}
+                              {transaction.creditCardId && (
+                                <span className="ml-2 text-blue-600">
+                                  • {getCreditCardDisplay(transaction.creditCardId)}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

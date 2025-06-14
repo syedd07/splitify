@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,16 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Trash2, Calculator, CreditCard, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
-import type { Person, Transaction } from '@/types/BillSplitter';
+import type { Person, Transaction, CreditCard } from '@/types/BillSplitter';
 
 const Index = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [user, setUser] = useState<any>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(true);
   
   // Get current date for defaults
   const currentDate = new Date();
@@ -28,6 +30,7 @@ const Index = () => {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -36,7 +39,9 @@ const Index = () => {
         navigate('/auth');
       } else {
         setUser(session.user);
+        await fetchCreditCards();
       }
+      setLoading(false);
     };
 
     checkAuth();
@@ -46,11 +51,41 @@ const Index = () => {
         navigate('/auth');
       } else {
         setUser(session.user);
+        fetchCreditCards();
       }
     });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const fetchCreditCards = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .order('is_primary', { ascending: false });
+
+      if (error) throw error;
+      
+      if (data && data.length === 0) {
+        toast({
+          title: "No Credit Cards Found",
+          description: "Please add a credit card first to start splitting bills.",
+          variant: "destructive",
+        });
+        navigate('/onboarding');
+        return;
+      }
+      
+      setCreditCards(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch credit cards",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Generate months array
   const months = [
@@ -121,6 +156,17 @@ const Index = () => {
 
   const canProceedFromStep1 = people.length >= 2;
   const canProceedFromStep2 = transactions.length > 0;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
@@ -280,6 +326,7 @@ const Index = () => {
               <CardContent>
                 <TransactionEntry 
                   people={people} 
+                  creditCards={creditCards}
                   onAddTransaction={addTransaction}
                   onDeleteTransaction={deleteTransaction}
                   transactions={transactions}
@@ -320,6 +367,7 @@ const Index = () => {
                 <CalculationSummary 
                   people={people}
                   transactions={transactions}
+                  creditCards={creditCards}
                   month={selectedMonth}
                   year={selectedYear}
                 />
