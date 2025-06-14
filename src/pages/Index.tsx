@@ -181,14 +181,7 @@ const Index = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => navigate('/onboarding')}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <Settings className="w-4 h-4" />
-              Manage Cards
-            </Button>
+            {/* Empty left side */}
           </div>
 
           <div className="flex items-center gap-2">
@@ -201,9 +194,14 @@ const Index = () => {
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">
-                  Welcome, {userProfile?.full_name || user.email}
-                </span>
+                <Button 
+                  onClick={() => navigate('/onboarding')}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Manage Cards
+                </Button>
                 <Button onClick={handleSignOut} variant="outline" size="sm">
                   Sign Out
                 </Button>
