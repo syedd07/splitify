@@ -78,7 +78,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           type: data.type || 'Unknown',
           country: data.country || 'Unknown',
           bank: data.bank || 'Unknown',
-          valid: data.valid !== false
+          valid: Boolean(data.valid !== false && !data.error)
         });
       }
     } catch (error) {
