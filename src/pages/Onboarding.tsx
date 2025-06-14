@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings } from 'lucide-react';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +23,7 @@ const Onboarding = () => {
   const [user, setUser] = useState<any>(null);
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -60,6 +62,13 @@ const Onboarding = () => {
 
       if (error) throw error;
       setCreditCards(data || []);
+      
+      // Auto-select primary card or first card
+      if (data && data.length > 0) {
+        const primaryCard = data.find(card => card.is_primary);
+        const cardToSelect = primaryCard || data[0];
+        setSelectedCardId(cardToSelect.id);
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -72,6 +81,7 @@ const Onboarding = () => {
   const handleCardAdded = (newCard: CreditCardData) => {
     setCreditCards(prev => [newCard, ...prev]);
     setShowAddCard(false);
+    setSelectedCardId(newCard.id);
     
     if (creditCards.length === 0) {
       toast({
@@ -87,7 +97,17 @@ const Onboarding = () => {
   };
 
   const handleGetStarted = () => {
-    navigate('/');
+    if (selectedCardId) {
+      // Store selected card in localStorage for the dashboard
+      localStorage.setItem('selectedCardId', selectedCardId);
+      navigate('/');
+    } else {
+      toast({
+        title: "Select a Card",
+        description: "Please select a credit card to use for your transactions.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -108,7 +128,7 @@ const Onboarding = () => {
             <div className="flex items-center gap-2">
               <CreditCard className="w-8 h-8 text-blue-600" />
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                My Credit Cards
+                Select Your Card
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -127,16 +147,17 @@ const Onboarding = () => {
           {user && (
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Welcome back, {user.user_metadata?.full_name || user.email}!
+                Welcome, {user.user_metadata?.full_name || user.email}!
               </h2>
               <p className="text-muted-foreground">
-                Manage your credit cards and start splitting bills with ease
+                Select which credit card you want to use for splitting bills
               </p>
             </div>
           )}
 
-          {/* Cards Grid */}
-          <div className="max-w-6xl mx-auto">
+          {/* Card Selection Section */}
+          <div className="max-w-6xl mx-auto mb-8">
+            <h3 className="text-lg font-semibold mb-4">Choose Your Card</h3>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {/* Add New Card Button */}
               <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
@@ -160,23 +181,84 @@ const Onboarding = () => {
 
               {/* Existing Credit Cards */}
               {creditCards.map((card) => (
-                <CreditCardDisplay
-                  key={card.id}
-                  card={card}
-                  onUpdate={fetchCreditCards}
-                />
+                <Card 
+                  key={card.id} 
+                  className={`cursor-pointer transition-all duration-200 ${
+                    selectedCardId === card.id 
+                      ? 'ring-2 ring-blue-500 bg-blue-50/50 shadow-lg' 
+                      : 'hover:shadow-md bg-white/80'
+                  } backdrop-blur-sm`}
+                  onClick={() => setSelectedCardId(card.id)}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-8 rounded bg-gradient-to-r ${
+                          card.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
+                          card.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
+                          card.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
+                          'from-gray-600 to-gray-800'
+                        } flex items-center justify-center`}>
+                          <CreditCard className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-lg">{card.card_name}</h3>
+                          <p className="text-sm text-muted-foreground">•••• {card.last_four_digits}</p>
+                        </div>
+                      </div>
+                      {selectedCardId === card.id && (
+                        <CheckCircle className="w-6 h-6 text-blue-600" />
+                      )}
+                    </div>
+                    {card.issuing_bank && (
+                      <p className="text-sm text-muted-foreground">{card.issuing_bank}</p>
+                    )}
+                  </CardContent>
+                </Card>
               ))}
+
+              {/* Add New Card Button */}
+              <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
+                <CardContent className="p-6 flex flex-col items-center justify-center h-full min-h-[200px]">
+                  <button
+                    onClick={() => setShowAddCard(true)}
+                    className="w-full flex flex-col items-center gap-4 text-blue-600 hover:text-blue-700"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Plus className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                      <h3 className="font-semibold">Add New Card</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Add another credit card
+                      </p>
+                    </div>
+                  </button>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Quick Actions */}
-            <div className="mt-8 text-center">
+            {/* Selected Card Display */}
+            {selectedCardId && (
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-2">Selected Card:</h4>
+                <p className="text-blue-700">
+                  {creditCards.find(c => c.id === selectedCardId)?.card_name} 
+                  (*{creditCards.find(c => c.id === selectedCardId)?.last_four_digits})
+                </p>
+              </div>
+            )}
+
+            {/* Get Started Button */}
+            <div className="text-center mt-8">
               <Button
                 onClick={handleGetStarted}
                 size="lg"
+                disabled={!selectedCardId}
                 className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
               >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                Go to Dashboard
+                <ArrowRight className="w-5 h-5 mr-2" />
+                Start Splitting Bills
               </Button>
             </div>
           </div>
@@ -253,20 +335,6 @@ const Onboarding = () => {
                 onCardAdded={handleCardAdded}
                 onCancel={() => setShowAddCard(false)}
               />
-            )}
-
-            {/* Get Started Button for first-time users */}
-            {creditCards.length > 0 && !showAddCard && (
-              <div className="text-center mt-8">
-                <Button
-                  onClick={handleGetStarted}
-                  size="lg"
-                  className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
-                >
-                  <CheckCircle className="w-5 h-5 mr-2" />
-                  Start Splitting Bills
-                </Button>
-              </div>
             )}
           </div>
         </div>

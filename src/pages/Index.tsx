@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Calculator, CreditCard as CreditCardIcon, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft, Calendar } from 'lucide-react';
+import { Plus, Trash2, Calculator, CreditCard as CreditCardIcon, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft, Calendar, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +18,7 @@ const Index = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
+  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null);
   const [user, setUser] = useState<any>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,21 @@ const Index = () => {
       }
       
       setCreditCards(data || []);
+      
+      // Get selected card from localStorage or use primary/first card
+      const storedCardId = localStorage.getItem('selectedCardId');
+      let cardToSelect = null;
+      
+      if (storedCardId && data) {
+        cardToSelect = data.find(card => card.id === storedCardId);
+      }
+      
+      if (!cardToSelect && data && data.length > 0) {
+        const primaryCard = data.find(card => card.is_primary);
+        cardToSelect = primaryCard || data[0];
+      }
+      
+      setSelectedCard(cardToSelect);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -85,6 +102,10 @@ const Index = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleCardChange = () => {
+    navigate('/onboarding');
   };
 
   // Generate months array
@@ -130,7 +151,12 @@ const Index = () => {
   };
 
   const addTransaction = (newTransaction: Transaction) => {
-    setTransactions([...transactions, newTransaction]);
+    // Auto-assign the selected card to the transaction if not already set
+    const transactionWithCard = {
+      ...newTransaction,
+      creditCardId: newTransaction.creditCardId || selectedCard?.id
+    };
+    setTransactions([...transactions, transactionWithCard]);
   };
 
   const deleteTransaction = (id: string) => {
@@ -138,6 +164,7 @@ const Index = () => {
   };
 
   const handleSignOut = async () => {
+    localStorage.removeItem('selectedCardId');
     await supabase.auth.signOut();
     navigate('/auth');
   };
@@ -210,6 +237,36 @@ const Index = () => {
             <p className="text-lg text-muted-foreground">
               Start splitting bills with ease
             </p>
+          </div>
+        )}
+
+        {/* Selected Card Display */}
+        {selectedCard && (
+          <div className="mb-8">
+            <Card className="bg-white/80 backdrop-blur-sm shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-6 rounded bg-gradient-to-r ${
+                      selectedCard.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
+                      selectedCard.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
+                      selectedCard.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
+                      'from-gray-600 to-gray-800'
+                    } flex items-center justify-center`}>
+                      <CreditCardIcon className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Using: {selectedCard.card_name}</p>
+                      <p className="text-sm text-muted-foreground">•••• {selectedCard.last_four_digits}</p>
+                    </div>
+                  </div>
+                  <Button onClick={handleCardChange} variant="outline" size="sm">
+                    <Edit className="w-4 h-4 mr-2" />
+                    Change Card
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -327,6 +384,7 @@ const Index = () => {
                 <TransactionEntry 
                   people={people} 
                   creditCards={creditCards}
+                  selectedCard={selectedCard}
                   onAddTransaction={addTransaction}
                   onDeleteTransaction={deleteTransaction}
                   transactions={transactions}
