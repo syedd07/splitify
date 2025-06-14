@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Download, Calculator, Users, Receipt, CreditCard, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -56,8 +55,17 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   const totalCommonExpenses = balances.reduce((sum, b) => sum + b.commonExpenses, 0);
   const outstandingBalance = totalExpenses - totalPayments;
 
-  const expenseTransactions = transactions.filter(t => t.type === 'expense');
-  const paymentTransactions = transactions.filter(t => t.type === 'payment');
+  // Sort transactions by date in descending order (latest first)
+  const sortTransactionsByDate = (transactions: Transaction[]) => {
+    return [...transactions].sort((a, b) => {
+      const dateA = parseInt(a.date);
+      const dateB = parseInt(b.date);
+      return dateB - dateA; // Descending order (latest dates first)
+    });
+  };
+
+  const expenseTransactions = sortTransactionsByDate(transactions.filter(t => t.type === 'expense'));
+  const paymentTransactions = sortTransactionsByDate(transactions.filter(t => t.type === 'payment'));
 
   const generatePDF = () => {
     const printWindow = window.open('', '_blank');
@@ -165,9 +173,9 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           </div>
 
           <div class="section">
-            <h3>💳 Expense Transactions</h3>
+            <h3>💳 Expense Transactions (Latest First)</h3>
             ${people.map(person => {
-              const personExpenses = expenseTransactions.filter(t => t.spentBy === person.id);
+              const personExpenses = sortTransactionsByDate(expenseTransactions.filter(t => t.spentBy === person.id));
               if (personExpenses.length === 0) return '';
               
               return `
@@ -206,9 +214,9 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           </div>
 
           <div class="section">
-            <h3>💰 Payment Transactions</h3>
+            <h3>💰 Payment Transactions (Latest First)</h3>
             ${people.map(person => {
-              const personPayments = paymentTransactions.filter(t => t.spentBy === person.id);
+              const personPayments = sortTransactionsByDate(paymentTransactions.filter(t => t.spentBy === person.id));
               if (personPayments.length === 0) return '';
               
               return `
@@ -353,7 +361,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Receipt className="w-5 h-5" />
-              Transaction Details
+              Transaction Details (Latest First)
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

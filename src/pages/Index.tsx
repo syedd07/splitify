@@ -20,8 +20,15 @@ const Index = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  // Get current date info
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-based (0 = January)
+
+  // Filter months - only show past months and current month
+  const availableMonths = months.slice(0, currentMonth + 1);
+
   // Only show current year and past 2 years
-  const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
   const handleStartSplitting = () => {
@@ -126,7 +133,7 @@ const Index = () => {
                         <SelectValue placeholder="Select month" />
                       </SelectTrigger>
                       <SelectContent>
-                        {months.map((month) => (
+                        {availableMonths.map((month) => (
                           <SelectItem key={month} value={month}>{month}</SelectItem>
                         ))}
                       </SelectContent>
