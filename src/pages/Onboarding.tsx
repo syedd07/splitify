@@ -1,12 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight } from 'lucide-react';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface CreditCardData {
   id: string;
@@ -24,6 +44,10 @@ const Onboarding = () => {
   const [showAddCard, setShowAddCard] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [editingCard, setEditingCard] = useState<CreditCardData | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -88,6 +112,87 @@ const Onboarding = () => {
         description: "Your first credit card has been added. You can now start splitting bills!",
       });
     }
+  };
+
+  const handleEditCard = async () => {
+    if (!editName.trim() || !editingCard) {
+      toast({
+        title: "Error",
+        description: "Card name cannot be empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('credit_cards')
+        .update({ card_name: editName.trim() })
+        .eq('id', editingCard.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Card name updated successfully",
+      });
+
+      setEditOpen(false);
+      setEditingCard(null);
+      await fetchCreditCards();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveCard = async (cardId: string) => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('credit_cards')
+        .delete()
+        .eq('id', cardId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Credit card removed successfully",
+      });
+
+      // If the removed card was selected, select another one
+      if (selectedCardId === cardId) {
+        const remainingCards = creditCards.filter(card => card.id !== cardId);
+        if (remainingCards.length > 0) {
+          setSelectedCardId(remainingCards[0].id);
+        } else {
+          setSelectedCardId('');
+        }
+      }
+
+      await fetchCreditCards();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openEditDialog = (card: CreditCardData) => {
+    setEditingCard(card);
+    setEditName(card.card_name);
+    setEditOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -210,8 +315,64 @@ const Onboarding = () => {
                       )}
                     </div>
                     {card.issuing_bank && (
-                      <p className="text-sm text-muted-foreground">{card.issuing_bank}</p>
+                      <p className="text-sm text-muted-foreground mb-4">{card.issuing_bank}</p>
                     )}
+                    
+                    {/* Card Actions */}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditDialog(card);
+                        }}
+                        disabled={actionLoading}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={actionLoading}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Remove
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove Credit Card</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to remove "{card.card_name}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleRemoveCard(card.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                              disabled={actionLoading}
+                            >
+                              {actionLoading ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Removing...
+                                </>
+                              ) : (
+                                'Remove Card'
+                              )}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -230,6 +391,41 @@ const Onboarding = () => {
               </Button>
             </div>
           </div>
+
+          {/* Edit Card Dialog */}
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Card Name</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cardName">Card Name</Label>
+                  <Input
+                    id="cardName"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="e.g., My HDFC Card"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditCard} disabled={actionLoading}>
+                  {actionLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     );
