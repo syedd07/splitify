@@ -324,15 +324,16 @@ const Index = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-2">
-            {/* Empty left side */}
-          </div>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <CreditCard className="w-8 h-8 text-blue-600" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-              Credit Ease Divide
-            </h1>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                Splitify!
+              </h1>
+              <p className="text-sm text-muted-foreground font-medium">
+                Credit Ease Divide
+              </p>
+            </div>
           </div>
           
           <div className="flex items-center gap-3">
