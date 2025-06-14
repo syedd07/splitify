@@ -5,24 +5,14 @@ export interface Person {
   isCardOwner?: boolean;
 }
 
-export interface CreditCard {
-  id: string;
-  card_name: string;
-  last_four_digits: string;
-  issuing_bank?: string;
-  card_type?: string;
-  is_primary: boolean;
-}
-
 export interface Transaction {
   id: string;
   amount: number;
   description: string;
   date: string;
-  type: 'expense' | 'payment';
-  category: 'personal' | 'common';
+  type: 'expense' | 'payment'; // New field to distinguish expenses from payments
+  category: 'personal' | 'common'; // For expenses only, payments are always personal
   spentBy: string; // person id
-  creditCardId?: string; // New field for linking to credit card
   splitBetween?: string[]; // person ids for common expenses
   isCommonSplit?: boolean; // to identify individual splits from common expenses
 }

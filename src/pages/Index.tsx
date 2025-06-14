@@ -1,461 +1,347 @@
 
 import React, { useState, useEffect } from 'react';
+import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Calculator, CreditCard as CreditCardIcon, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft, Calendar, Edit } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
-import { useToast } from '@/hooks/use-toast';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
-import type { Person, Transaction, CreditCard } from '@/types/BillSplitter';
+import { Transaction, Person } from '@/types/BillSplitter';
+import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 
 const Index = () => {
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<string>('');
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
-  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null);
+  const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
   const [user, setUser] = useState<any>(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [loading, setLoading] = useState(true);
-  
-  // Get current date for defaults
-  const currentDate = new Date();
-  const currentMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
-  const currentYear = currentDate.getFullYear().toString();
-  
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  
+  const [userProfile, setUserProfile] = useState<any>(null);
   const navigate = useNavigate();
-  const { toast } = useToast();
+
+  // Get current date info
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-based (0 = January)
+
+  // Filter months - only show past months and current month
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const availableMonths = months.slice(0, currentMonth + 1);
+
+  // Only show current year and past 2 years
+  const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
-        await fetchCreditCards();
-      }
-      setLoading(false);
-    };
-
-    checkAuth();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/auth');
+      setUser(session?.user || null);
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
       } else {
-        setUser(session.user);
-        fetchCreditCards();
+        setUserProfile(null);
+      }
+    });
+
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
-  const fetchCreditCards = async () => {
+  const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('credit_cards')
+        .from('profiles')
         .select('*')
-        .order('is_primary', { ascending: false });
+        .eq('id', userId)
+        .single();
 
       if (error) throw error;
-      
-      if (data && data.length === 0) {
-        toast({
-          title: "No Credit Cards Found",
-          description: "Please add a credit card first to start splitting bills.",
-          variant: "destructive",
-        });
-        navigate('/onboarding');
-        return;
-      }
-      
-      setCreditCards(data || []);
-      
-      // Get selected card from localStorage or use primary/first card
-      const storedCardId = localStorage.getItem('selectedCardId');
-      let cardToSelect = null;
-      
-      if (storedCardId && data) {
-        cardToSelect = data.find(card => card.id === storedCardId);
-      }
-      
-      if (!cardToSelect && data && data.length > 0) {
-        const primaryCard = data.find(card => card.is_primary);
-        cardToSelect = primaryCard || data[0];
-      }
-      
-      setSelectedCard(cardToSelect);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch credit cards",
-        variant: "destructive",
-      });
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
     }
-  };
-
-  const handleCardChange = () => {
-    navigate('/onboarding');
-  };
-
-  // Generate months array
-  const months = [
-    { value: '01', label: 'January' },
-    { value: '02', label: 'February' },
-    { value: '03', label: 'March' },
-    { value: '04', label: 'April' },
-    { value: '05', label: 'May' },
-    { value: '06', label: 'June' },
-    { value: '07', label: 'July' },
-    { value: '08', label: 'August' },
-    { value: '09', label: 'September' },
-    { value: '10', label: 'October' },
-    { value: '11', label: 'November' },
-    { value: '12', label: 'December' }
-  ];
-
-  // Generate years array (from 2020 to current year only)
-  const generateYears = () => {
-    const years = [];
-    const startYear = 2020;
-    for (let year = startYear; year <= currentDate.getFullYear(); year++) {
-      years.push(year.toString());
-    }
-    return years;
-  };
-
-  // Filter months to not include future months for current year
-  const getAvailableMonths = () => {
-    if (selectedYear === currentYear) {
-      return months.filter(month => parseInt(month.value) <= currentDate.getMonth() + 1);
-    }
-    return months;
-  };
-
-  const addPerson = (newPerson: Person) => {
-    setPeople([...people, newPerson]);
-  };
-
-  const deletePerson = (id: string) => {
-    setPeople(people.filter(person => person.id !== id));
-  };
-
-  const addTransaction = (newTransaction: Transaction) => {
-    // Auto-assign the selected card to the transaction if not already set
-    const transactionWithCard = {
-      ...newTransaction,
-      creditCardId: newTransaction.creditCardId || selectedCard?.id
-    };
-    setTransactions([...transactions, transactionWithCard]);
-  };
-
-  const deleteTransaction = (id: string) => {
-    setTransactions(transactions.filter(transaction => transaction.id !== id));
   };
 
   const handleSignOut = async () => {
-    localStorage.removeItem('selectedCardId');
     await supabase.auth.signOut();
-    navigate('/auth');
+    setUser(null);
+    setUserProfile(null);
+    setPeople([]);
+    setTransactions([]);
+    setCurrentStep('setup');
   };
 
-  const nextStep = () => {
-    if (currentStep < 3) {
-      setCurrentStep(currentStep + 1);
+  const handleStartSplitting = () => {
+    if (selectedMonth && selectedYear && people.length >= 2) {
+      setCurrentStep('transactions');
     }
   };
 
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+  const handleAddTransaction = (transaction: Transaction) => {
+    if (transaction.type === 'expense' && transaction.category === 'common') {
+      // For common expenses, create individual transactions for each person
+      const amountPerPerson = transaction.amount / people.length;
+      people.forEach(person => {
+        const commonTransaction: Transaction = {
+          ...transaction,
+          id: `${Date.now()}-${person.id}`,
+          amount: amountPerPerson,
+          spentBy: person.id,
+          isCommonSplit: true
+        };
+        setTransactions(prev => [...prev, commonTransaction]);
+      });
+    } else {
+      setTransactions(prev => [...prev, { ...transaction, id: Date.now().toString() }]);
     }
   };
 
-  const canProceedFromStep1 = people.length >= 2;
-  const canProceedFromStep2 = transactions.length > 0;
+  const handleDeleteTransaction = (transactionId: string) => {
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleProceedToSummary = () => {
+    setCurrentStep('summary');
+  };
+
+  const handleBackToSetup = () => {
+    setCurrentStep('setup');
+  };
+
+  const handleBackToTransactions = () => {
+    setCurrentStep('transactions');
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
       <div className="container mx-auto px-4 py-8">
-
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-2">
-            <CreditCardIcon className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+            <CreditCard className="w-8 h-8 text-blue-600" />
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
               Credit Ease Divide
             </h1>
           </div>
+          
           <div className="flex items-center gap-3">
             {user ? (
-              <>
-                <Button onClick={() => navigate('/onboarding')} variant="outline" size="sm">
-                  <User className="w-4 h-4 mr-2" />
-                  My Cards
-                </Button>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  Welcome, {userProfile?.full_name || user.email}
+                </span>
                 <Button onClick={handleSignOut} variant="outline" size="sm">
-                  <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
                 </Button>
-              </>
+              </div>
             ) : (
-              <Button onClick={() => navigate('/auth?mode=signup')} variant="outline" size="sm">
-                <User className="w-4 h-4 mr-2" />
-                Sign Up
+              <Button onClick={() => navigate('/auth')} variant="outline" size="sm">
+                <LogIn className="w-4 h-4 mr-2" />
+                Sign In
               </Button>
             )}
           </div>
         </div>
 
-        {/* Welcome Section */}
-        {user && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-2">
-              Welcome, {user.user_metadata?.full_name || user.email}!
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Start splitting bills with ease
-            </p>
+        <div className="text-center mb-8">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Split your credit card bills seamlessly with smart calculations and beautiful reports
+          </p>
+        </div>
+
+        {/* Show auth prompt if not logged in */}
+        {!user && (
+          <div className="text-center mb-8">
+            <Card className="max-w-md mx-auto bg-white/80 backdrop-blur-sm">
+              <CardContent className="p-6">
+                <h3 className="text-xl font-semibold mb-2">Get Started</h3>
+                <p className="text-muted-foreground mb-4">
+                  Sign up to save your credit cards and split bills with ease
+                </p>
+                <Button 
+                  onClick={() => navigate('/auth')} 
+                  className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+                >
+                  Sign Up Now
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {/* Step Progress Indicator */}
-        <div className="mb-8">
-          <div className="flex justify-center items-center space-x-4">
-            {[1, 2, 3].map((step) => (
-              <div key={step} className="flex items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  currentStep >= step 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {step}
+        {/* Rest of the component - only show if user is logged in */}
+        {user && (
+          <>
+            {/* Progress Steps */}
+            <div className="flex items-center justify-center mb-8">
+              <div className="flex items-center space-x-4">
+                <div className={`flex items-center space-x-2 ${currentStep === 'setup' ? 'text-blue-600' : currentStep === 'transactions' || currentStep === 'summary' ? 'text-green-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'setup' ? 'bg-blue-600 text-white' : currentStep === 'transactions' || currentStep === 'summary' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <span className="font-medium">Setup</span>
                 </div>
-                <div className={`ml-2 text-sm font-medium ${
-                  currentStep >= step ? 'text-blue-600' : 'text-gray-400'
-                }`}>
-                  {step === 1 && 'Setup & People'}
-                  {step === 2 && 'Enter Transactions'}
-                  {step === 3 && 'View Summary'}
+                <div className={`w-8 h-1 ${currentStep === 'transactions' || currentStep === 'summary' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
+                <div className={`flex items-center space-x-2 ${currentStep === 'transactions' ? 'text-blue-600' : currentStep === 'summary' ? 'text-green-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'transactions' ? 'bg-blue-600 text-white' : currentStep === 'summary' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <span className="font-medium">Add Expenses & Payments</span>
                 </div>
-                {step < 3 && (
-                  <ArrowRight className={`w-4 h-4 mx-4 ${
-                    currentStep > step ? 'text-blue-600' : 'text-gray-300'
-                  }`} />
-                )}
+                <div className={`w-8 h-1 ${currentStep === 'summary' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
+                <div className={`flex items-center space-x-2 ${currentStep === 'summary' ? 'text-blue-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'summary' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>
+                    <Calculator className="w-4 h-4" />
+                  </div>
+                  <span className="font-medium">Calculate</span>
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Step Content */}
-        <div className="max-w-4xl mx-auto">
-          {currentStep === 1 && (
-            <Card className="bg-white/80 backdrop-blur-sm shadow-md">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Step 1: Setup & Manage People
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Selected Card Display with Change Option */}
-                {selectedCard && (
-                  <div className="mb-6">
-                    <Card className="bg-white/80 backdrop-blur-sm shadow-sm">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-6 rounded bg-gradient-to-r ${
-                              selectedCard.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
-                              selectedCard.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
-                              selectedCard.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
-                              'from-gray-600 to-gray-800'
-                            } flex items-center justify-center`}>
-                              <CreditCardIcon className="w-4 h-4 text-white" />
-                            </div>
-                            <div>
-                              <p className="font-medium">Using: {selectedCard.card_name}</p>
-                              <p className="text-sm text-muted-foreground">•••• {selectedCard.last_four_digits}</p>
-                            </div>
-                          </div>
-                          <Button onClick={handleCardChange} variant="outline" size="sm">
-                            <Edit className="w-4 h-4 mr-2" />
-                            Change Card
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Month and Year Selection */}
-                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    Select Month & Year
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="month-select">Month</Label>
-                      <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                        <SelectTrigger id="month-select">
-                          <SelectValue placeholder="Select month" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {getAvailableMonths().map((month) => (
-                            <SelectItem key={month.value} value={month.value}>
-                              {month.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+            {/* Setup Step */}
+            {currentStep === 'setup' && (
+              <div className="space-y-6">
+                <Card className="max-w-2xl mx-auto">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CreditCard className="w-5 h-5" />
+                      Credit Card Bill Month
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Month</label>
+                        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select month" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableMonths.map((month) => (
+                              <SelectItem key={month} value={month}>{month}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Year</label>
+                        <Select value={selectedYear} onValueChange={setSelectedYear}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {years.map((year) => (
+                              <SelectItem key={year} value={year}>{year}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div>
-                      <Label htmlFor="year-select">Year</Label>
-                      <Select value={selectedYear} onValueChange={setSelectedYear}>
-                        <SelectTrigger id="year-select">
-                          <SelectValue placeholder="Select year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {generateYears().map((year) => (
-                            <SelectItem key={year} value={year}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Selected period: {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
-                  </p>
-                </div>
+                  </CardContent>
+                </Card>
 
                 <PersonManager 
                   people={people} 
                   setPeople={setPeople}
-                  cardOwnerName={user?.user_metadata?.full_name || user?.email || "Card Owner"}
+                  cardOwnerName={userProfile?.full_name || user?.email || 'Card Owner'}
                 />
-                <div className="flex justify-end mt-6">
+
+                <div className="text-center">
                   <Button 
-                    onClick={nextStep} 
-                    disabled={!canProceedFromStep1}
-                    className="flex items-center gap-2"
+                    onClick={handleStartSplitting}
+                    disabled={!selectedMonth || !selectedYear || people.length < 2}
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
                   >
-                    Next: Enter Transactions
-                    <ArrowRight className="w-4 h-4" />
+                    Start Adding Expenses & Payments
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            )}
 
-          {currentStep === 2 && (
-            <Card className="bg-white/80 backdrop-blur-sm shadow-md">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  Step 2: Enter Transactions for {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TransactionEntry 
-                  people={people} 
-                  creditCards={creditCards}
-                  selectedCard={selectedCard}
-                  onAddTransaction={addTransaction}
-                  onDeleteTransaction={deleteTransaction}
-                  transactions={transactions}
-                  month={selectedMonth}
-                  year={selectedYear}
-                />
-                <div className="flex justify-between mt-6">
+            {/* Transaction Entry Step */}
+            {currentStep === 'transactions' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-4 mb-4">
                   <Button 
-                    onClick={prevStep} 
+                    onClick={handleBackToSetup}
                     variant="outline"
+                    size="sm"
                     className="flex items-center gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    Back: Setup & People
-                  </Button>
-                  <Button 
-                    onClick={nextStep} 
-                    disabled={!canProceedFromStep2}
-                    className="flex items-center gap-2"
-                  >
-                    Next: View Summary
-                    <ArrowRight className="w-4 h-4" />
+                    Back to Setup
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+                
+                <Card className="max-w-4xl mx-auto">
+                  <CardHeader>
+                    <CardTitle>
+                      Managing expenses and payments for {selectedMonth} {selectedYear}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <TransactionEntry 
+                      people={people} 
+                      onAddTransaction={handleAddTransaction}
+                      onDeleteTransaction={handleDeleteTransaction}
+                      transactions={transactions}
+                      month={selectedMonth}
+                      year={selectedYear}
+                    />
+                  </CardContent>
+                </Card>
 
-          {currentStep === 3 && (
-            <Card className="bg-white/80 backdrop-blur-sm shadow-md">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <PieChart className="w-4 h-4" />
-                  Step 3: Summary for {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                {transactions.length > 0 && (
+                  <div className="text-center">
+                    <Button 
+                      onClick={handleProceedToSummary}
+                      size="lg"
+                      className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+                    >
+                      Calculate Split
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Summary Step */}
+            {currentStep === 'summary' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <Button 
+                    onClick={handleBackToTransactions}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Expenses
+                  </Button>
+                </div>
+                
                 <CalculationSummary 
                   people={people}
                   transactions={transactions}
                   month={selectedMonth}
                   year={selectedYear}
                 />
-                <div className="flex justify-between mt-6">
-                  <Button 
-                    onClick={prevStep} 
-                    variant="outline"
-                    className="flex items-center gap-2"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back: Enter Transactions
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      setPeople([]);
-                      setTransactions([]);
-                      setCurrentStep(1);
-                      // Reset to current month/year
-                      setSelectedMonth(currentMonth);
-                      setSelectedYear(currentYear);
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    Start New Split
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

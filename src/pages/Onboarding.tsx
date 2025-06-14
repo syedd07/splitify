@@ -1,33 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight, Edit, Trash2, Crown } from 'lucide-react';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 
 interface CreditCardData {
   id: string;
@@ -43,12 +22,7 @@ const Onboarding = () => {
   const [user, setUser] = useState<any>(null);
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
-  const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [editingCard, setEditingCard] = useState<CreditCardData | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editOpen, setEditOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -82,17 +56,10 @@ const Onboarding = () => {
       const { data, error } = await supabase
         .from('credit_cards')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setCreditCards(data || []);
-      
-      // Auto-select primary card or first card
-      if (data && data.length > 0) {
-        const primaryCard = data.find(card => card.is_primary);
-        const cardToSelect = primaryCard || data[0];
-        setSelectedCardId(cardToSelect.id);
-      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -105,7 +72,6 @@ const Onboarding = () => {
   const handleCardAdded = (newCard: CreditCardData) => {
     setCreditCards(prev => [newCard, ...prev]);
     setShowAddCard(false);
-    setSelectedCardId(newCard.id);
     
     if (creditCards.length === 0) {
       toast({
@@ -115,104 +81,13 @@ const Onboarding = () => {
     }
   };
 
-  const handleEditCard = async () => {
-    if (!editName.trim() || !editingCard) {
-      toast({
-        title: "Error",
-        description: "Card name cannot be empty",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const { error } = await supabase
-        .from('credit_cards')
-        .update({ card_name: editName.trim() })
-        .eq('id', editingCard.id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Card name updated successfully",
-      });
-
-      setEditOpen(false);
-      setEditingCard(null);
-      await fetchCreditCards();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRemoveCard = async (cardId: string) => {
-    setActionLoading(true);
-    try {
-      const { error } = await supabase
-        .from('credit_cards')
-        .delete()
-        .eq('id', cardId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Credit card removed successfully",
-      });
-
-      // If the removed card was selected, select another one
-      if (selectedCardId === cardId) {
-        const remainingCards = creditCards.filter(card => card.id !== cardId);
-        if (remainingCards.length > 0) {
-          setSelectedCardId(remainingCards[0].id);
-        } else {
-          setSelectedCardId('');
-        }
-      }
-
-      await fetchCreditCards();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const openEditDialog = (card: CreditCardData) => {
-    setEditingCard(card);
-    setEditName(card.card_name);
-    setEditOpen(true);
-  };
-
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/');
   };
 
   const handleGetStarted = () => {
-    if (selectedCardId) {
-      // Store selected card in localStorage for the dashboard
-      localStorage.setItem('selectedCardId', selectedCardId);
-      navigate('/');
-    } else {
-      toast({
-        title: "Select a Card",
-        description: "Please select a credit card to use for your transactions.",
-        variant: "destructive",
-      });
-    }
+    navigate('/');
   };
 
   if (loading) {
@@ -233,7 +108,7 @@ const Onboarding = () => {
             <div className="flex items-center gap-2">
               <CreditCard className="w-8 h-8 text-blue-600" />
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                Select Your Card
+                My Credit Cards
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -252,17 +127,16 @@ const Onboarding = () => {
           {user && (
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Welcome, {user.user_metadata?.full_name || user.email}!
+                Welcome back, {user.user_metadata?.full_name || user.email}!
               </h2>
               <p className="text-muted-foreground">
-                Select which credit card you want to use for splitting bills
+                Manage your credit cards and start splitting bills with ease
               </p>
             </div>
           )}
 
-          {/* Card Selection Section */}
-          <div className="max-w-6xl mx-auto mb-8">
-            <h3 className="text-lg font-semibold mb-4">Choose Your Card</h3>
+          {/* Cards Grid */}
+          <div className="max-w-6xl mx-auto">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {/* Add New Card Button */}
               <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
@@ -285,160 +159,27 @@ const Onboarding = () => {
               </Card>
 
               {/* Existing Credit Cards */}
-              {creditCards.map((card, index) => (
-                <Card 
-                  key={card.id} 
-                  className={`cursor-pointer transition-all duration-200 ${
-                    selectedCardId === card.id 
-                      ? 'ring-2 ring-blue-500 bg-blue-50/50 shadow-lg' 
-                      : 'hover:shadow-md bg-white/80'
-                  } backdrop-blur-sm flex flex-col`}
-                  onClick={() => setSelectedCardId(card.id)}
-                >
-                  <CardContent className="p-6 flex flex-col h-full">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-8 rounded bg-gradient-to-r ${
-                          card.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
-                          card.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
-                          card.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
-                          'from-gray-600 to-gray-800'
-                        } flex items-center justify-center`}>
-                          <CreditCard className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{card.card_name}</h3>
-                          <p className="text-sm text-muted-foreground">•••• {card.last_four_digits}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {index === 0 && (
-                          <Badge variant="secondary" className="flex items-center gap-1">
-                            <Crown className="w-3 h-3" />
-                            Primary
-                          </Badge>
-                        )}
-                        {selectedCardId === card.id && (
-                          <CheckCircle className="w-6 h-6 text-blue-600" />
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-grow">
-                      {card.issuing_bank && (
-                        <p className="text-sm text-muted-foreground mb-4">{card.issuing_bank}</p>
-                      )}
-                    </div>
-                    
-                    {/* Card Actions - positioned at bottom */}
-                    <div className="flex gap-2 mt-auto">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditDialog(card);
-                        }}
-                        disabled={actionLoading}
-                        className="flex-1"
-                      >
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
-                      </Button>
-                      
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 flex-1"
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={actionLoading}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Remove
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Remove Credit Card</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to remove "{card.card_name}"? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleRemoveCard(card.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                              disabled={actionLoading}
-                            >
-                              {actionLoading ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  Removing...
-                                </>
-                              ) : (
-                                'Remove Card'
-                              )}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </CardContent>
-                </Card>
+              {creditCards.map((card) => (
+                <CreditCardDisplay
+                  key={card.id}
+                  card={card}
+                  onUpdate={fetchCreditCards}
+                />
               ))}
             </div>
 
-            {/* Get Started Button */}
-            <div className="text-center mt-8">
+            {/* Quick Actions */}
+            <div className="mt-8 text-center">
               <Button
                 onClick={handleGetStarted}
                 size="lg"
-                disabled={!selectedCardId}
                 className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
               >
-                <ArrowRight className="w-5 h-5 mr-2" />
-                Start Splitting Bills
+                <CheckCircle className="w-5 h-5 mr-2" />
+                Go to Dashboard
               </Button>
             </div>
           </div>
-
-          {/* Edit Card Dialog */}
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit Card Name</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cardName">Card Name</Label>
-                  <Input
-                    id="cardName"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="e.g., My HDFC Card"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleEditCard} disabled={actionLoading}>
-                  {actionLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
     );
@@ -512,6 +253,20 @@ const Onboarding = () => {
                 onCardAdded={handleCardAdded}
                 onCancel={() => setShowAddCard(false)}
               />
+            )}
+
+            {/* Get Started Button for first-time users */}
+            {creditCards.length > 0 && !showAddCard && (
+              <div className="text-center mt-8">
+                <Button
+                  onClick={handleGetStarted}
+                  size="lg"
+                  className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
+                >
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  Start Splitting Bills
+                </Button>
+              </div>
             )}
           </div>
         </div>

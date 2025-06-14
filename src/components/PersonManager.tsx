@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Person } from '@/types/BillSplitter';
-import { supabase } from '@/integrations/supabase/client';
 
 interface PersonManagerProps {
   people: Person[];
@@ -16,53 +15,18 @@ interface PersonManagerProps {
 
 const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople, cardOwnerName }) => {
   const [newPersonName, setNewPersonName] = useState('');
-  const [actualCardOwnerName, setActualCardOwnerName] = useState('');
-
-  // Fetch the actual user name from the database
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single();
-        
-        if (profile?.full_name) {
-          setActualCardOwnerName(profile.full_name);
-        } else {
-          // Fallback to user metadata or email
-          setActualCardOwnerName(user.user_metadata?.full_name || user.email || 'Card Owner');
-        }
-      }
-    };
-
-    fetchUserProfile();
-  }, []);
 
   // Add card owner as first person when component mounts
   useEffect(() => {
-    if (people.length === 0 && actualCardOwnerName) {
+    if (people.length === 0 && cardOwnerName) {
       const cardOwner: Person = {
         id: 'card-owner',
-        name: actualCardOwnerName,
+        name: cardOwnerName,
         isCardOwner: true
       };
       setPeople([cardOwner]);
     }
-  }, [actualCardOwnerName, people.length, setPeople]);
-
-  // Update card owner name if it changes
-  useEffect(() => {
-    if (actualCardOwnerName && people.length > 0) {
-      setPeople(prev => prev.map(person => 
-        person.id === 'card-owner' 
-          ? { ...person, name: actualCardOwnerName }
-          : person
-      ));
-    }
-  }, [actualCardOwnerName, setPeople]);
+  }, [cardOwnerName, people.length, setPeople]);
 
   const addPerson = () => {
     if (newPersonName.trim()) {
