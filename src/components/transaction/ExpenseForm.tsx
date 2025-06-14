@@ -65,40 +65,53 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
     }
 
     if (category === 'common') {
-      const allPeople = people;
-      const splitAmount = parseFloat(amount) / allPeople.length;
-      const baseTimestamp = Date.now();
+      const totalAmount = parseFloat(amount);
+      const splitAmount = totalAmount / people.length;
       
-      console.log('Common expense split calculation:');
-      console.log('Total amount:', amount);
-      console.log('Number of people:', allPeople.length);
+      console.log('=== COMMON EXPENSE SPLIT DEBUG ===');
+      console.log('Total amount entered:', totalAmount);
+      console.log('Number of people:', people.length);
       console.log('Split amount per person:', splitAmount);
-      console.log('People involved:', allPeople.map(p => p.name));
+      console.log('People list:', people.map(p => ({ id: p.id, name: p.name })));
       
-      allPeople.forEach((person, index) => {
-        const transaction: Omit<Transaction, 'id'> = {
+      // Create individual transactions for each person
+      people.forEach((person, index) => {
+        const uniqueId = `common-${Date.now()}-${index}-${person.id}`;
+        
+        const transaction: Transaction = {
+          id: uniqueId,
           amount: splitAmount,
-          description,
+          description: `${description} (Common Split)`,
           date,
           type: 'expense',
-          category: 'personal',
+          category: 'personal', // Individual portion of common expense
           spentBy: person.id,
           creditCardId: selectedCard?.id,
           isCommonSplit: true
         };
 
-        const uniqueId = `${baseTimestamp}-${index}-${person.id}`;
-        onAddTransaction({ ...transaction, id: uniqueId } as Transaction);
-        
-        console.log(`Added transaction for ${person.name} with ID: ${uniqueId}, amount: ${splitAmount}`);
+        console.log(`Creating transaction ${index + 1}:`, {
+          id: transaction.id,
+          person: person.name,
+          amount: transaction.amount,
+          spentBy: transaction.spentBy
+        });
+
+        // Add each transaction individually with a small delay to ensure unique IDs
+        setTimeout(() => {
+          onAddTransaction(transaction);
+        }, index * 10);
       });
 
       toast({
         title: "Common Expense Added",
-        description: `₹${amount} expense for ${description} has been split equally among ${allPeople.length} people (₹${splitAmount.toFixed(2)} each).`
+        description: `₹${totalAmount} expense for ${description} has been split equally among ${people.length} people (₹${splitAmount.toFixed(2)} each).`
       });
+
+      console.log('=== END COMMON EXPENSE SPLIT DEBUG ===');
     } else {
-      const transaction: Omit<Transaction, 'id'> = {
+      const transaction: Transaction = {
+        id: Date.now().toString(),
         amount: parseFloat(amount),
         description,
         date,
@@ -108,7 +121,7 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
         creditCardId: selectedCard?.id
       };
 
-      onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
+      onAddTransaction(transaction);
       toast({
         title: "Expense Added",
         description: `₹${amount} expense for ${description} has been recorded.`
