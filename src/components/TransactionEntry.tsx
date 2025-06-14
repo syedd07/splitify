@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,10 +42,13 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddExpense = () => {
-    if (!amount || !description || !date || !spentBy) {
+    // For common expenses, we don't need spentBy as it will be split among all people
+    if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all fields to add an expense.",
+        description: category === 'common' 
+          ? "Please fill in amount, description, and date to add a common expense."
+          : "Please fill in all fields to add an expense.",
         variant: "destructive"
       });
       return;
@@ -58,14 +60,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       date,
       type: 'expense',
       category,
-      spentBy
+      spentBy: category === 'common' ? 'common' : spentBy // Use 'common' as placeholder for common expenses
     };
 
     onAddTransaction(transaction as Transaction);
     resetForm();
     toast({
       title: "Expense Added",
-      description: `₹${amount} expense for ${description} has been recorded.`
+      description: category === 'common' 
+        ? `₹${amount} common expense for ${description} has been recorded and will be split equally.`
+        : `₹${amount} expense for ${description} has been recorded.`
     });
   };
 
@@ -170,10 +174,20 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Spent by</label>
-                  <Select value={spentBy} onValueChange={setSpentBy}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Who spent this?" />
+                  <label className="block text-sm font-medium mb-2">
+                    {category === 'common' ? 'Spent by (Auto - Split Equally)' : 'Spent by'}
+                  </label>
+                  <Select 
+                    value={spentBy} 
+                    onValueChange={setSpentBy}
+                    disabled={category === 'common'}
+                  >
+                    <SelectTrigger className={category === 'common' ? 'opacity-50 cursor-not-allowed' : ''}>
+                      <SelectValue placeholder={
+                        category === 'common' 
+                          ? "Will be split equally among all people" 
+                          : "Who spent this?"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
                       {people.map((person) => (
@@ -186,7 +200,13 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
-                  <Select value={category} onValueChange={(value: 'personal' | 'common') => setCategory(value)}>
+                  <Select value={category} onValueChange={(value: 'personal' | 'common') => {
+                    setCategory(value);
+                    // Clear spentBy when switching to common
+                    if (value === 'common') {
+                      setSpentBy('');
+                    }
+                  }}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
