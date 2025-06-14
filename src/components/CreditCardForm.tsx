@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CreditCard, Loader2, CheckCircle, AlertCircle, X, Info } from 'lucide-react';
+import { CreditCard, Loader2, X, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,10 +16,6 @@ interface CreditCardFormProps {
 const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [cardName, setCardName] = useState('');
-  const [binInfo, setBinInfo] = useState<any>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isConfirmed, setIsConfirmed] = useState(false);
-  const [validationError, setValidationError] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -42,72 +37,26 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCardNumber(e.target.value);
     setCardNumber(formatted);
-    
-    // Reset verification when card number changes
-    setBinInfo(null);
-    setIsConfirmed(false);
-    setValidationError('');
-    
-    // Auto-verify when we have at least 6 digits
-    const digits = formatted.replace(/\s/g, '');
-    if (digits.length >= 6 && !isVerifying) {
-      verifyBIN(digits);
-    }
-  };
-
-  const verifyBIN = async (cardDigits: string) => {
-    setIsVerifying(true);
-    setValidationError('');
-    
-    try {
-      const bin = cardDigits.substring(0, 6);
-      
-      const { data, error } = await supabase.functions.invoke('verify-bin', {
-        body: { bin },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data.error) {
-        setValidationError('Invalid card number - unable to verify');
-        setBinInfo(null);
-      } else {
-        setBinInfo({
-          brand: data.brand || 'Unknown',
-          type: data.type || 'Unknown',
-          country: data.country || 'Unknown',
-          bank: data.bank || 'Unknown',
-          valid: Boolean(data.valid !== false && !data.error),
-          source: data.source || 'api'
-        });
-      }
-    } catch (error) {
-      console.error('BIN verification failed:', error);
-      setValidationError('Unable to verify card number. Please check and try again.');
-      setBinInfo(null);
-    } finally {
-      setIsVerifying(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (validationError) {
+    const cleanCardNumber = cardNumber.replace(/\s/g, '');
+    
+    if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
       toast({
-        title: "Invalid Card",
-        description: "Please enter a valid card number",
+        title: "Invalid Card Number",
+        description: "Please enter a valid card number (13-19 digits)",
         variant: "destructive",
       });
       return;
     }
 
-    if (!isConfirmed) {
+    if (!cardName.trim()) {
       toast({
-        title: "Confirmation Required",
-        description: "Please confirm the card information is correct",
+        title: "Card Name Required",
+        description: "Please enter a name for your card",
         variant: "destructive",
       });
       return;
@@ -122,18 +71,14 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
         throw new Error('User not authenticated');
       }
 
-      const cleanCardNumber = cardNumber.replace(/\s/g, '');
       const lastFourDigits = cleanCardNumber.slice(-4);
 
       const { data, error } = await supabase
         .from('credit_cards')
         .insert({
           user_id: user.id,
-          card_name: cardName,
+          card_name: cardName.trim(),
           last_four_digits: lastFourDigits,
-          bin_info: binInfo,
-          card_type: binInfo?.brand,
-          issuing_bank: binInfo?.bank,
           is_primary: true
         })
         .select()
@@ -176,29 +121,16 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           {/* Card Number Input */}
           <div className="space-y-2">
             <Label htmlFor="cardNumber">Card Number</Label>
-            <div className="relative">
-              <Input
-                id="cardNumber"
-                type="text"
-                placeholder="1234 5678 9012 3456"
-                value={cardNumber}
-                onChange={handleCardNumberChange}
-                maxLength={19}
-                className={`text-lg font-mono tracking-wider ${
-                  validationError ? 'border-red-500' : ''
-                }`}
-                required
-              />
-              {isVerifying && (
-                <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            {validationError && (
-              <p className="text-sm text-red-600 flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" />
-                {validationError}
-              </p>
-            )}
+            <Input
+              id="cardNumber"
+              type="text"
+              placeholder="1234 5678 9012 3456"
+              value={cardNumber}
+              onChange={handleCardNumberChange}
+              maxLength={19}
+              className="text-lg font-mono tracking-wider"
+              required
+            />
           </div>
 
           {/* Card Name Input */}
@@ -213,86 +145,6 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
               required
             />
           </div>
-
-          {/* BIN Verification Results */}
-          {binInfo && !validationError && (
-            <div className="space-y-4">
-              <div className="border rounded-lg p-4 bg-green-50/50">
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <h4 className="font-semibold text-gray-800">Valid Card Detected</h4>
-                  {binInfo.source === 'fallback' && (
-                    <Badge variant="secondary" className="ml-auto flex items-center gap-1">
-                      <Info className="w-3 h-3" />
-                      Basic Detection
-                    </Badge>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Card Brand:</span>
-                    <p className="font-medium">
-                      {binInfo.brand === 'Unknown' ? 'Card Detected' : binInfo.brand}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Card Type:</span>
-                    <p className="font-medium">
-                      {binInfo.type === 'Unknown' ? 'Credit/Debit' : binInfo.type}
-                    </p>
-                  </div>
-                  {binInfo.country !== 'Unknown' && (
-                    <div>
-                      <span className="text-muted-foreground">Country:</span>
-                      <p className="font-medium">{binInfo.country}</p>
-                    </div>
-                  )}
-                  {binInfo.bank && binInfo.bank !== 'Unknown' && (
-                    <div>
-                      <span className="text-muted-foreground">Bank:</span>
-                      <p className="font-medium">{binInfo.bank}</p>
-                    </div>
-                  )}
-                </div>
-
-                {binInfo.source === 'fallback' && (
-                  <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                    <Info className="w-3 h-3 inline mr-1" />
-                    Card verified using basic pattern recognition. Some details may be limited.
-                  </div>
-                )}
-
-                <div className="mt-4 flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant={isConfirmed ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setIsConfirmed(!isConfirmed)}
-                    className={isConfirmed ? "bg-green-600 hover:bg-green-700" : ""}
-                  >
-                    {isConfirmed ? (
-                      <>
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Confirmed
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        Confirm Details
-                      </>
-                    )}
-                  </Button>
-                  
-                  {!isConfirmed && (
-                    <p className="text-sm text-muted-foreground">
-                      Please confirm the card information is correct
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Security Note */}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -311,7 +163,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           <div className="flex gap-3">
             <Button
               type="submit"
-              disabled={loading || !binInfo || !isConfirmed || Boolean(validationError)}
+              disabled={loading}
               className="flex-1 bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
             >
               {loading ? (
