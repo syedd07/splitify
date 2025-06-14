@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -216,38 +215,7 @@ const Onboarding = () => {
                   </CardContent>
                 </Card>
               ))}
-
-              {/* Add New Card Button */}
-              <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
-                <CardContent className="p-6 flex flex-col items-center justify-center h-full min-h-[200px]">
-                  <button
-                    onClick={() => setShowAddCard(true)}
-                    className="w-full flex flex-col items-center gap-4 text-blue-600 hover:text-blue-700"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Plus className="w-6 h-6" />
-                    </div>
-                    <div className="text-center">
-                      <h3 className="font-semibold">Add New Card</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Add another credit card
-                      </p>
-                    </div>
-                  </button>
-                </CardContent>
-              </Card>
             </div>
-
-            {/* Selected Card Display */}
-            {selectedCardId && (
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Selected Card:</h4>
-                <p className="text-blue-700">
-                  {creditCards.find(c => c.id === selectedCardId)?.card_name} 
-                  (*{creditCards.find(c => c.id === selectedCardId)?.last_four_digits})
-                </p>
-              </div>
-            )}
 
             {/* Get Started Button */}
             <div className="text-center mt-8">
