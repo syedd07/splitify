@@ -29,10 +29,11 @@ export const createCommonExpense = ({
   console.log('Split amount per person:', splitAmount);
   console.log('People list:', people.map(p => ({ id: p.id, name: p.name })));
   
-  // Create individual transactions for each person - process all at once
-  const allTransactions: Transaction[] = people.map((person, index) => {
+  // Create individual transactions for each person
+  people.forEach((person, index) => {
     const baseTimestamp = Date.now();
-    const uniqueId = `common-${baseTimestamp}-${index}-${person.id}`;
+    // Add index and person ID to ensure uniqueness
+    const uniqueId = `common-${baseTimestamp}-${index}-${person.id}-${Math.random().toString(36).substr(2, 9)}`;
     
     const transaction: Transaction = {
       id: uniqueId,
@@ -46,20 +47,16 @@ export const createCommonExpense = ({
       isCommonSplit: true
     };
 
-    console.log(`Creating transaction ${index + 1}:`, {
+    console.log(`Creating transaction ${index + 1} for ${person.name}:`, {
       id: transaction.id,
       person: person.name,
       amount: transaction.amount,
       spentBy: transaction.spentBy
     });
 
-    return transaction;
-  });
-
-  // Add all transactions at once
-  allTransactions.forEach(transaction => {
-    console.log('Adding transaction to state:', transaction.id, 'for person:', people.find(p => p.id === transaction.spentBy)?.name);
+    // Add transaction immediately
     onAddTransaction(transaction);
+    console.log(`Added transaction for ${person.name} with ID: ${transaction.id}`);
   });
 
   toast({
