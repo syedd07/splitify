@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -308,7 +307,7 @@ const Onboarding = () => {
             {creditCards.length > 0 && !showAddCard && (
               <div className="text-center mt-8">
                 <Button
-                  onClick={handleGetStarted}
+                  onClick={handleStartSplitting}
                   size="lg"
                   className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
                 >
