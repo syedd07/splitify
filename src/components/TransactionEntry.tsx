@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar, CreditCard as CreditCardIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -68,10 +67,17 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
 
     if (category === 'common') {
-      // Create individual transactions for each person with equal split
-      const splitAmount = parseFloat(amount) / people.length;
+      // Get ALL people including card owner for splitting
+      const allPeople = people;
+      const splitAmount = parseFloat(amount) / allPeople.length;
       
-      people.forEach(person => {
+      console.log('Common expense split calculation:');
+      console.log('Total amount:', amount);
+      console.log('Number of people:', allPeople.length);
+      console.log('Split amount per person:', splitAmount);
+      console.log('People involved:', allPeople.map(p => p.name));
+      
+      allPeople.forEach(person => {
         const transaction: Omit<Transaction, 'id'> = {
           amount: splitAmount,
           description,
@@ -88,7 +94,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
       toast({
         title: "Common Expense Added",
-        description: `₹${amount} expense for ${description} has been split equally among ${people.length} people (₹${splitAmount.toFixed(2)} each).`
+        description: `₹${amount} expense for ${description} has been split equally among ${allPeople.length} people (₹${splitAmount.toFixed(2)} each).`
       });
     } else {
       // Personal expense
