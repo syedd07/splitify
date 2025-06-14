@@ -6,11 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { CreditCard, Mail, Lock, User, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialMode = searchParams.get('mode') === 'signup' ? false : true;
+  
+  const [isLogin, setIsLogin] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -47,7 +51,8 @@ const Auth = () => {
           options: {
             data: {
               full_name: fullName,
-            }
+            },
+            emailRedirectTo: window.location.origin
           }
         });
 
@@ -130,13 +135,15 @@ const Auth = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">
+                  {isLogin ? 'Password' : 'Create Password'}
+                </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Enter your password"
+                    placeholder={isLogin ? "Enter your password" : "Create your password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10"
