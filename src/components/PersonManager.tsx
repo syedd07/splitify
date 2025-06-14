@@ -18,7 +18,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople, cardOw
 
   // Add card owner as first person when component mounts
   useEffect(() => {
-    if (people.length === 0) {
+    if (people.length === 0 && cardOwnerName) {
       const cardOwner: Person = {
         id: 'card-owner',
         name: cardOwnerName,

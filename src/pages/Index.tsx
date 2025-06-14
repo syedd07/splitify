@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -136,14 +137,14 @@ const Index = () => {
           
           <div className="flex items-center gap-3">
             {user ? (
-              <>
+              <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">
                   Welcome, {userProfile?.full_name || user.email}
                 </span>
                 <Button onClick={handleSignOut} variant="outline" size="sm">
                   Sign Out
                 </Button>
-              </>
+              </div>
             ) : (
               <Button onClick={() => navigate('/auth')} variant="outline" size="sm">
                 <LogIn className="w-4 h-4 mr-2" />
