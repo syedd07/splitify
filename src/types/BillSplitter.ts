@@ -10,7 +10,8 @@ export interface Transaction {
   amount: number;
   description: string;
   date: string;
-  category: 'personal' | 'common';
+  type: 'expense' | 'payment'; // New field to distinguish expenses from payments
+  category: 'personal' | 'common'; // For expenses only, payments are always personal
   spentBy: string; // person id
   splitBetween?: string[]; // person ids for common expenses
   isCommonSplit?: boolean; // to identify individual splits from common expenses
@@ -20,11 +21,15 @@ export interface PersonBalance {
   personId: string;
   personalExpenses: number;
   commonExpenses: number;
-  totalOwed: number;
+  totalExpenses: number;
+  totalPayments: number;
+  netBalance: number; // positive means they owe, negative means they should receive
 }
 
 export interface SplitCalculation {
   personBalances: PersonBalance[];
-  totalAmount: number;
+  totalExpenses: number;
+  totalPayments: number;
   totalCommonExpenses: number;
+  outstandingBalance: number;
 }

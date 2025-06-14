@@ -20,8 +20,9 @@ const Index = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  // Only show current year and past 2 years
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+  const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
   const handleStartSplitting = () => {
     if (selectedMonth && selectedYear && people.length >= 2) {
@@ -30,7 +31,7 @@ const Index = () => {
   };
 
   const handleAddTransaction = (transaction: Transaction) => {
-    if (transaction.category === 'common') {
+    if (transaction.type === 'expense' && transaction.category === 'common') {
       // For common expenses, create individual transactions for each person
       const amountPerPerson = transaction.amount / people.length;
       people.forEach(person => {
@@ -94,7 +95,7 @@ const Index = () => {
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'transactions' ? 'bg-blue-600 text-white' : currentStep === 'summary' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
                 <Plus className="w-4 h-4" />
               </div>
-              <span className="font-medium">Add Expenses</span>
+              <span className="font-medium">Add Expenses & Payments</span>
             </div>
             <div className={`w-8 h-1 ${currentStep === 'summary' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
             <div className={`flex items-center space-x-2 ${currentStep === 'summary' ? 'text-blue-600' : 'text-gray-400'}`}>
@@ -157,7 +158,7 @@ const Index = () => {
                 size="lg"
                 className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
               >
-                Start Adding Expenses
+                Start Adding Expenses & Payments
               </Button>
             </div>
           </div>
@@ -181,7 +182,7 @@ const Index = () => {
             <Card className="max-w-4xl mx-auto">
               <CardHeader>
                 <CardTitle>
-                  Adding expenses for {selectedMonth} {selectedYear}
+                  Managing expenses and payments for {selectedMonth} {selectedYear}
                 </CardTitle>
               </CardHeader>
               <CardContent>
