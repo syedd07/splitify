@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,12 +10,11 @@ import { useNavigate } from 'react-router-dom';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
-import type { Person, Transaction, CalculationResult } from '@/types/BillSplitter';
+import type { Person, Transaction } from '@/types/BillSplitter';
 
 const Index = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [calculationResults, setCalculationResults] = useState<CalculationResult[]>([]);
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
 
@@ -55,29 +55,6 @@ const Index = () => {
 
   const deleteTransaction = (id: string) => {
     setTransactions(transactions.filter(transaction => transaction.id !== id));
-  };
-
-  const calculateBalances = () => {
-    // Aggregate amounts paid by each person
-    const personPayments: { [personId: string]: number } = {};
-    people.forEach(person => personPayments[person.id] = 0); // Initialize all to 0
-
-    transactions.forEach(transaction => {
-      personPayments[transaction.paidBy] += transaction.amount;
-    });
-
-    // Calculate each person's share
-    const totalBill = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
-    const individualShare = totalBill / people.length;
-
-    // Determine who owes whom
-    const newCalculationResults: CalculationResult[] = [];
-    people.forEach(person => {
-      const amountOwed = personPayments[person.id] - individualShare;
-      newCalculationResults.push({ personId: person.id, amountOwed });
-    });
-
-    setCalculationResults(newCalculationResults);
   };
 
   const handleSignOut = async () => {
@@ -141,7 +118,11 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <PersonManager people={people} addPerson={addPerson} deletePerson={deletePerson} />
+              <PersonManager 
+                people={people} 
+                setPeople={setPeople}
+                cardOwnerName={user?.user_metadata?.full_name || user?.email || "Card Owner"}
+              />
             </CardContent>
           </Card>
 
@@ -154,7 +135,14 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <TransactionEntry people={people} addTransaction={addTransaction} />
+              <TransactionEntry 
+                people={people} 
+                onAddTransaction={addTransaction}
+                onDeleteTransaction={deleteTransaction}
+                transactions={transactions}
+                month={new Date().getMonth() + 1}
+                year={new Date().getFullYear()}
+              />
             </CardContent>
           </Card>
 
@@ -167,7 +155,10 @@ const Index = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <CalculationSummary calculationResults={calculationResults} people={people} calculateBalances={calculateBalances} />
+              <CalculationSummary 
+                people={people}
+                transactions={transactions}
+              />
             </CardContent>
           </Card>
         </div>
