@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ const Index = () => {
   const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [selectedCard, setSelectedCard] = useState<any>(null);
   const navigate = useNavigate();
 
   // Get current date info
@@ -38,6 +38,16 @@ const Index = () => {
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
   useEffect(() => {
+    // Pre-select current month and year
+    setSelectedMonth(months[currentMonth]);
+    setSelectedYear(currentYear.toString());
+
+    // Load selected card from localStorage
+    const storedCard = localStorage.getItem('selectedCard');
+    if (storedCard) {
+      setSelectedCard(JSON.parse(storedCard));
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null);
       if (session?.user) {
@@ -56,7 +66,7 @@ const Index = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [currentMonth, currentYear]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -212,6 +222,32 @@ const Index = () => {
             {/* Setup Step */}
             {currentStep === 'setup' && (
               <div className="space-y-6">
+                {/* Selected Credit Card Display */}
+                {selectedCard && (
+                  <Card className="max-w-2xl mx-auto">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <CreditCard className="w-5 h-5" />
+                        Selected Credit Card
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                        <CreditCard className="w-6 h-6 text-blue-600" />
+                        <div>
+                          <p className="font-semibold">{selectedCard.card_name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            **** **** **** {selectedCard.last_four_digits}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        All transactions will be saved to this card
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Card className="max-w-2xl mx-auto">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
