@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn } from 'lucide-react';
+import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
+import CreditCardDisplay from '@/components/CreditCardDisplay';
 import { Transaction, Person } from '@/types/BillSplitter';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>('');
@@ -19,7 +28,10 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [availableCards, setAvailableCards] = useState<any[]>([]);
+  const [showCardSelector, setShowCardSelector] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   // Get current date info
   const currentDate = new Date();
@@ -52,8 +64,10 @@ const Index = () => {
       setUser(session?.user || null);
       if (session?.user) {
         fetchUserProfile(session.user.id);
+        fetchUserCards(session.user.id);
       } else {
         setUserProfile(null);
+        setAvailableCards([]);
       }
     });
 
@@ -62,6 +76,7 @@ const Index = () => {
       setUser(session?.user || null);
       if (session?.user) {
         fetchUserProfile(session.user.id);
+        fetchUserCards(session.user.id);
       }
     });
 
@@ -80,6 +95,33 @@ const Index = () => {
       setUserProfile(data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const fetchUserCards = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      setAvailableCards(data || []);
+    } catch (error) {
+      console.error('Error fetching user cards:', error);
+    }
+  };
+
+  const handleCardSelect = (cardId: string) => {
+    const card = availableCards.find(c => c.id === cardId);
+    if (card) {
+      setSelectedCard(card);
+      localStorage.setItem('selectedCard', JSON.stringify(card));
+      setShowCardSelector(false);
+      toast({
+        title: "Card Selected",
+        description: `${card.card_name} has been selected for transactions.`,
+      });
     }
   };
 
@@ -139,6 +181,17 @@ const Index = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => navigate('/onboarding')}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              Manage Cards
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
             <CreditCard className="w-8 h-8 text-blue-600" />
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
               Credit Ease Divide
@@ -164,11 +217,25 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="text-center mb-8">
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Split your credit card bills seamlessly with smart calculations and beautiful reports
-          </p>
-        </div>
+        {/* Centered Welcome Message */}
+        {user && (
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              Welcome, {userProfile?.full_name || user.email}!
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Split your credit card bills seamlessly with smart calculations and beautiful reports
+            </p>
+          </div>
+        )}
+
+        {!user && (
+          <div className="text-center mb-8">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Split your credit card bills seamlessly with smart calculations and beautiful reports
+            </p>
+          </div>
+        )}
 
         {/* Show auth prompt if not logged in */}
         {!user && (
@@ -232,14 +299,39 @@ const Index = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                        <CreditCard className="w-6 h-6 text-blue-600" />
-                        <div>
-                          <p className="font-semibold">{selectedCard.card_name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            **** **** **** {selectedCard.last_four_digits}
-                          </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg flex-1">
+                          <CreditCard className="w-6 h-6 text-blue-600" />
+                          <div>
+                            <p className="font-semibold">{selectedCard.card_name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              **** **** **** {selectedCard.last_four_digits}
+                            </p>
+                          </div>
                         </div>
+                        <Dialog open={showCardSelector} onOpenChange={setShowCardSelector}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" className="ml-3">
+                              Change Card
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-4xl">
+                            <DialogHeader>
+                              <DialogTitle>Select Credit Card</DialogTitle>
+                            </DialogHeader>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                              {availableCards.map((card) => (
+                                <CreditCardDisplay
+                                  key={card.id}
+                                  card={card}
+                                  onUpdate={() => fetchUserCards(user.id)}
+                                  isSelected={selectedCard?.id === card.id}
+                                  onSelect={handleCardSelect}
+                                />
+                              ))}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
                       </div>
                       <p className="text-sm text-muted-foreground mt-2">
                         All transactions will be saved to this card
