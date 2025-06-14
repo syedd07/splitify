@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TransactionEntryProps {
   people: Person[];
@@ -32,6 +33,120 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [date, setDate] = useState('');
   const [spentBy, setSpentBy] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
+  const [loading, setLoading] = useState(false);
+
+  // Load transactions from database on component mount
+  useEffect(() => {
+    loadTransactionsFromDB();
+  }, [month, year]);
+
+  const loadTransactionsFromDB = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get selected card from localStorage
+      const storedCard = localStorage.getItem('selectedCard');
+      if (!storedCard) return;
+
+      const selectedCard = JSON.parse(storedCard);
+
+      const { data: dbTransactions, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('credit_card_id', selectedCard.id)
+        .eq('month', month)
+        .eq('year', year);
+
+      if (error) {
+        console.error('Error loading transactions:', error);
+        return;
+      }
+
+      // Convert database transactions to local format and add them
+      if (dbTransactions) {
+        dbTransactions.forEach(dbTransaction => {
+          const localTransaction: Transaction = {
+            id: dbTransaction.id,
+            amount: parseFloat(dbTransaction.amount.toString()),
+            description: dbTransaction.description,
+            date: dbTransaction.transaction_date,
+            type: dbTransaction.transaction_type as 'expense' | 'payment',
+            category: dbTransaction.category as 'personal' | 'common',
+            spentBy: dbTransaction.spent_by_person_name,
+            isCommonSplit: dbTransaction.is_common_split || false
+          };
+
+          onAddTransaction(localTransaction);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    }
+  };
+
+  const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Get selected card from localStorage
+      const storedCard = localStorage.getItem('selectedCard');
+      if (!storedCard) {
+        throw new Error('No credit card selected');
+      }
+
+      const selectedCard = JSON.parse(storedCard);
+
+      const dbTransaction = {
+        user_id: user.id,
+        credit_card_id: selectedCard.id,
+        amount: transaction.amount,
+        description: transaction.description,
+        transaction_date: `${year}-${String(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month) + 1).padStart(2, '0')}-${String(transaction.date).padStart(2, '0')}`,
+        transaction_type: transaction.type,
+        category: transaction.category,
+        spent_by_person_name: transaction.spentBy,
+        month: month,
+        year: year,
+        is_common_split: transaction.isCommonSplit || false
+      };
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert(dbTransaction)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return data.id;
+    } catch (error) {
+      console.error('Error saving transaction:', error);
+      throw error;
+    }
+  };
+
+  const deleteTransactionFromDB = async (transactionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionId);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      throw error;
+    }
+  };
 
   const resetForm = () => {
     setAmount('');
@@ -41,7 +156,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     setCategory('personal');
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     // For common expenses, we don't need spentBy as it will be split among all people
     if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
       toast({
@@ -54,26 +169,42 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    const transaction: Omit<Transaction, 'id'> = {
-      amount: parseFloat(amount),
-      description,
-      date,
-      type: 'expense',
-      category,
-      spentBy: category === 'common' ? 'common' : spentBy // Use 'common' as placeholder for common expenses
-    };
+    setLoading(true);
+    try {
+      const transaction: Omit<Transaction, 'id'> = {
+        amount: parseFloat(amount),
+        description,
+        date,
+        type: 'expense',
+        category,
+        spentBy: category === 'common' ? 'common' : spentBy // Use 'common' as placeholder for common expenses
+      };
 
-    onAddTransaction(transaction as Transaction);
-    resetForm();
-    toast({
-      title: "Expense Added",
-      description: category === 'common' 
-        ? `₹${amount} common expense for ${description} has been recorded and will be split equally.`
-        : `₹${amount} expense for ${description} has been recorded.`
-    });
+      // Save to database first
+      const dbTransactionId = await saveTransactionToDB(transaction);
+      
+      // Add to local state with database ID
+      onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
+      
+      resetForm();
+      toast({
+        title: "Expense Added",
+        description: category === 'common' 
+          ? `₹${amount} common expense for ${description} has been recorded and will be split equally.`
+          : `₹${amount} expense for ${description} has been recorded.`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save expense. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAddPayment = () => {
+  const handleAddPayment = async () => {
     if (!amount || !description || !date || !spentBy) {
       toast({
         title: "Missing Information",
@@ -83,21 +214,58 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    const transaction: Omit<Transaction, 'id'> = {
-      amount: parseFloat(amount),
-      description,
-      date,
-      type: 'payment',
-      category: 'personal', // Payments are always personal
-      spentBy
-    };
+    setLoading(true);
+    try {
+      const transaction: Omit<Transaction, 'id'> = {
+        amount: parseFloat(amount),
+        description,
+        date,
+        type: 'payment',
+        category: 'personal', // Payments are always personal
+        spentBy
+      };
 
-    onAddTransaction(transaction as Transaction);
-    resetForm();
-    toast({
-      title: "Payment Added",
-      description: `₹${amount} payment for ${description} has been recorded.`
-    });
+      // Save to database first
+      const dbTransactionId = await saveTransactionToDB(transaction);
+      
+      // Add to local state with database ID
+      onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
+      
+      resetForm();
+      toast({
+        title: "Payment Added",
+        description: `₹${amount} payment for ${description} has been recorded.`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save payment. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (transactionId: string) => {
+    try {
+      // Delete from database first
+      await deleteTransactionFromDB(transactionId);
+      
+      // Remove from local state
+      onDeleteTransaction(transactionId);
+      
+      toast({
+        title: "Transaction Deleted",
+        description: "Transaction has been removed successfully."
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete transaction. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   // Sort transactions by date in descending order (latest first)
@@ -218,9 +386,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 </div>
               </div>
 
-              <Button onClick={handleAddExpense} className="w-full">
+              <Button onClick={handleAddExpense} className="w-full" disabled={loading}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Expense
+                {loading ? 'Adding...' : 'Add Expense'}
               </Button>
             </CardContent>
           </Card>
@@ -282,9 +450,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 </Select>
               </div>
 
-              <Button onClick={handleAddPayment} className="w-full">
+              <Button onClick={handleAddPayment} className="w-full" disabled={loading}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Payment
+                {loading ? 'Adding...' : 'Add Payment'}
               </Button>
             </CardContent>
           </Card>
@@ -339,7 +507,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => onDeleteTransaction(transaction.id)}
+                              onClick={() => handleDeleteTransaction(transaction.id)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -376,7 +544,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => onDeleteTransaction(transaction.id)}
+                              onClick={() => handleDeleteTransaction(transaction.id)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>

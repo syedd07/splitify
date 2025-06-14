@@ -72,6 +72,65 @@ export type Database = {
         }
         Relationships: []
       }
+      transactions: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          credit_card_id: string
+          description: string
+          id: string
+          is_common_split: boolean | null
+          month: string
+          spent_by_person_name: string
+          transaction_date: string
+          transaction_type: string
+          updated_at: string
+          user_id: string
+          year: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          credit_card_id: string
+          description: string
+          id?: string
+          is_common_split?: boolean | null
+          month: string
+          spent_by_person_name: string
+          transaction_date: string
+          transaction_type: string
+          updated_at?: string
+          user_id: string
+          year: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          credit_card_id?: string
+          description?: string
+          id?: string
+          is_common_split?: boolean | null
+          month?: string
+          spent_by_person_name?: string
+          transaction_date?: string
+          transaction_type?: string
+          updated_at?: string
+          user_id?: string
+          year?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

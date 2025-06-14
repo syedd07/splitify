@@ -83,6 +83,11 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, [currentMonth, currentYear]);
 
+  // Clear transactions when month/year changes
+  useEffect(() => {
+    setTransactions([]);
+  }, [selectedMonth, selectedYear]);
+
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -155,7 +160,7 @@ const Index = () => {
         setTransactions(prev => [...prev, commonTransaction]);
       });
     } else {
-      setTransactions(prev => [...prev, { ...transaction, id: Date.now().toString() }]);
+      setTransactions(prev => [...prev, { ...transaction, id: transaction.id || Date.now().toString() }]);
     }
   };
 
