@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -140,8 +141,8 @@ const Index = () => {
                 onAddTransaction={addTransaction}
                 onDeleteTransaction={deleteTransaction}
                 transactions={transactions}
-                month={new Date().getMonth() + 1}
-                year={new Date().getFullYear()}
+                month="12"
+                year="2024"
               />
             </CardContent>
           </Card>
@@ -158,6 +159,8 @@ const Index = () => {
               <CalculationSummary 
                 people={people}
                 transactions={transactions}
+                month="12"
+                year="2024"
               />
             </CardContent>
           </Card>
@@ -168,3 +171,4 @@ const Index = () => {
 };
 
 export default Index;
+
