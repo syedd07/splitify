@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2, Calculator, CreditCard, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Trash2, Calculator, CreditCard, Users, DollarSign, PieChart, LogOut, User, ArrowRight, ArrowLeft, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import PersonManager from '@/components/PersonManager';
@@ -17,6 +18,15 @@ const Index = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [user, setUser] = useState<any>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  
+  // Get current date for defaults
+  const currentDate = new Date();
+  const currentMonth = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+  const currentYear = currentDate.getFullYear().toString();
+  
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -41,6 +51,40 @@ const Index = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Generate months array
+  const months = [
+    { value: '01', label: 'January' },
+    { value: '02', label: 'February' },
+    { value: '03', label: 'March' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'June' },
+    { value: '07', label: 'July' },
+    { value: '08', label: 'August' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' }
+  ];
+
+  // Generate years array (from 2020 to current year only)
+  const generateYears = () => {
+    const years = [];
+    const startYear = 2020;
+    for (let year = startYear; year <= currentDate.getFullYear(); year++) {
+      years.push(year.toString());
+    }
+    return years;
+  };
+
+  // Filter months to not include future months for current year
+  const getAvailableMonths = () => {
+    if (selectedYear === currentYear) {
+      return months.filter(month => parseInt(month.value) <= currentDate.getMonth() + 1);
+    }
+    return months;
+  };
 
   const addPerson = (newPerson: Person) => {
     setPeople([...people, newPerson]);
@@ -138,7 +182,7 @@ const Index = () => {
                 <div className={`ml-2 text-sm font-medium ${
                   currentStep >= step ? 'text-blue-600' : 'text-gray-400'
                 }`}>
-                  {step === 1 && 'Add People'}
+                  {step === 1 && 'Setup & People'}
                   {step === 2 && 'Enter Transactions'}
                   {step === 3 && 'View Summary'}
                 </div>
@@ -159,10 +203,53 @@ const Index = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="w-4 h-4" />
-                  Step 1: Manage People
+                  Step 1: Setup & Manage People
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Month and Year Selection */}
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Calendar className="w-5 h-5" />
+                    Select Month & Year
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="month-select">Month</Label>
+                      <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                        <SelectTrigger id="month-select">
+                          <SelectValue placeholder="Select month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableMonths().map((month) => (
+                            <SelectItem key={month.value} value={month.value}>
+                              {month.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="year-select">Year</Label>
+                      <Select value={selectedYear} onValueChange={setSelectedYear}>
+                        <SelectTrigger id="year-select">
+                          <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Selected period: {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+                  </p>
+                </div>
+
                 <PersonManager 
                   people={people} 
                   setPeople={setPeople}
@@ -187,7 +274,7 @@ const Index = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4" />
-                  Step 2: Enter Transactions
+                  Step 2: Enter Transactions for {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -196,8 +283,8 @@ const Index = () => {
                   onAddTransaction={addTransaction}
                   onDeleteTransaction={deleteTransaction}
                   transactions={transactions}
-                  month="12"
-                  year="2024"
+                  month={selectedMonth}
+                  year={selectedYear}
                 />
                 <div className="flex justify-between mt-6">
                   <Button 
@@ -206,7 +293,7 @@ const Index = () => {
                     className="flex items-center gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    Back: Manage People
+                    Back: Setup & People
                   </Button>
                   <Button 
                     onClick={nextStep} 
@@ -226,15 +313,15 @@ const Index = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <PieChart className="w-4 h-4" />
-                  Step 3: Calculation Summary
+                  Step 3: Summary for {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <CalculationSummary 
                   people={people}
                   transactions={transactions}
-                  month="12"
-                  year="2024"
+                  month={selectedMonth}
+                  year={selectedYear}
                 />
                 <div className="flex justify-between mt-6">
                   <Button 
@@ -250,6 +337,9 @@ const Index = () => {
                       setPeople([]);
                       setTransactions([]);
                       setCurrentStep(1);
+                      // Reset to current month/year
+                      setSelectedMonth(currentMonth);
+                      setSelectedYear(currentYear);
                     }}
                     className="flex items-center gap-2"
                   >
