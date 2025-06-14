@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Crown, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,17 +10,30 @@ import { Person } from '@/types/BillSplitter';
 interface PersonManagerProps {
   people: Person[];
   setPeople: React.Dispatch<React.SetStateAction<Person[]>>;
+  cardOwnerName: string;
 }
 
-const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople }) => {
+const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople, cardOwnerName }) => {
   const [newPersonName, setNewPersonName] = useState('');
+
+  // Add card owner as first person when component mounts
+  useEffect(() => {
+    if (people.length === 0) {
+      const cardOwner: Person = {
+        id: 'card-owner',
+        name: cardOwnerName,
+        isCardOwner: true
+      };
+      setPeople([cardOwner]);
+    }
+  }, [cardOwnerName, people.length, setPeople]);
 
   const addPerson = () => {
     if (newPersonName.trim()) {
       const newPerson: Person = {
         id: Date.now().toString(),
         name: newPersonName.trim(),
-        isCardOwner: people.length === 0 // First person is card owner
+        isCardOwner: false
       };
       setPeople(prev => [...prev, newPerson]);
       setNewPersonName('');
@@ -28,14 +41,9 @@ const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople }) => {
   };
 
   const removePerson = (id: string) => {
+    // Don't allow removing the card owner
+    if (id === 'card-owner') return;
     setPeople(prev => prev.filter(person => person.id !== id));
-  };
-
-  const setCardOwner = (id: string) => {
-    setPeople(prev => prev.map(person => ({
-      ...person,
-      isCardOwner: person.id === id
-    })));
   };
 
   return (
@@ -78,21 +86,14 @@ const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople }) => {
                 <div className="flex items-center gap-2">
                   {!person.isCardOwner && (
                     <Button
-                      variant="outline"
+                      variant="destructive"
                       size="sm"
-                      onClick={() => setCardOwner(person.id)}
+                      onClick={() => removePerson(person.id)}
+                      disabled={people.length <= 2}
                     >
-                      Make Card Owner
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   )}
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => removePerson(person.id)}
-                    disabled={people.length <= 2}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
                 </div>
               </div>
             ))}
@@ -101,7 +102,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople }) => {
 
         {people.length < 2 && (
           <p className="text-sm text-muted-foreground text-center py-4">
-            Add at least 2 people to start splitting bills
+            Add at least 1 more person to start splitting bills
           </p>
         )}
       </CardContent>

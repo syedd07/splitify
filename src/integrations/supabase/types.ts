@@ -9,7 +9,69 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      credit_cards: {
+        Row: {
+          bin_info: Json | null
+          card_name: string
+          card_type: string | null
+          created_at: string
+          id: string
+          is_primary: boolean | null
+          issuing_bank: string | null
+          last_four_digits: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bin_info?: Json | null
+          card_name: string
+          card_type?: string | null
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          issuing_bank?: string | null
+          last_four_digits: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bin_info?: Json | null
+          card_name?: string
+          card_type?: string | null
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          issuing_bank?: string | null
+          last_four_digits?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
