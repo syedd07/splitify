@@ -108,8 +108,8 @@ const Index = () => {
           </div>
         )}
 
-        {/* Core App Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Core App Layout - Fixed to 3 columns side by side */}
+        <div className="grid grid-cols-3 gap-4 min-h-[600px]">
           {/* Person Management */}
           <Card className="bg-white/80 backdrop-blur-sm shadow-md">
             <CardHeader>
