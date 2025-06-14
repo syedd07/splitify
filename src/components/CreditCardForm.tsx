@@ -58,7 +58,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     try {
       const bin = cardDigits.substring(0, 8); // Use first 8 digits for better accuracy
       
-      // Try binlist.net first
+      // Try binlist.net first (no API key required, but has rate limits)
       try {
         const response = await fetch(`https://lookup.binlist.net/${bin}`, {
           headers: {
@@ -76,16 +76,24 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
             source: 'binlist'
           });
         } else {
-          throw new Error('Binlist failed');
+          throw new Error('Binlist API failed or rate limited');
         }
       } catch (error) {
-        // Fallback with more realistic bank names for demo
-        const commonBanks = ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank', 'Kotak Mahindra Bank'];
-        const randomBank = commonBanks[Math.floor(Math.random() * commonBanks.length)];
+        console.log('Binlist API failed, using fallback:', error);
+        // Enhanced fallback with more realistic data based on common Indian BIN ranges
+        const bankMappings = {
+          '4': ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank'],
+          '5': ['ICICI Bank', 'HDFC Bank', 'Kotak Mahindra Bank', 'Yes Bank'],
+          '6': ['RuPay - State Bank of India', 'RuPay - HDFC Bank', 'RuPay - ICICI Bank']
+        };
+        
+        const firstDigit = bin.charAt(0);
+        const possibleBanks = bankMappings[firstDigit] || ['HDFC Bank', 'ICICI Bank', 'State Bank of India'];
+        const randomBank = possibleBanks[Math.floor(Math.random() * possibleBanks.length)];
         
         setBinInfo({
           bank: randomBank,
-          brand: 'Visa',
+          brand: firstDigit === '4' ? 'Visa' : firstDigit === '5' ? 'Mastercard' : 'RuPay',
           type: 'Credit',
           country: 'India',
           source: 'fallback'
