@@ -56,7 +56,7 @@ const Auth = () => {
 
         toast({
           title: "Welcome to Splitify!",
-          description: "Please check your email to verify your account and complete the signup process.",
+          description: "Please check your email to verify your account. Click the verification link to complete your signup.",
         });
       }
     } catch (error: any) {
@@ -69,6 +69,8 @@ const Auth = () => {
         errorMessage = 'This email is already registered. Please sign in instead or use a different email.';
       } else if (error.message.includes('Password should be at least')) {
         errorMessage = 'Password should be at least 6 characters long.';
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = 'Please check your email and click the verification link to activate your account.';
       }
       
       toast({
