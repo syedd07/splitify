@@ -36,22 +36,13 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
   const [spentBy, setSpentBy] = useState('');
-  const [creditCardId, setCreditCardId] = useState(selectedCard?.id || '');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
-
-  // Update credit card selection when selectedCard changes
-  React.useEffect(() => {
-    if (selectedCard && !creditCardId) {
-      setCreditCardId(selectedCard.id);
-    }
-  }, [selectedCard, creditCardId]);
 
   const resetForm = () => {
     setAmount('');
     setDescription('');
     setDate('');
     setSpentBy('');
-    setCreditCardId(selectedCard?.id || '');
     setCategory('personal');
   };
 
@@ -72,7 +63,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       type: 'expense',
       category,
       spentBy,
-      creditCardId: creditCardId || selectedCard?.id
+      creditCardId: selectedCard?.id
     };
 
     onAddTransaction({ ...transaction, id: Date.now().toString() } as Transaction);
@@ -135,6 +126,18 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Show selected card display */}
+      {selectedCard && (
+        <div className="p-3 bg-blue-50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <CreditCardIcon className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Using: {selectedCard.card_name} (*{selectedCard.last_four_digits})
+            </span>
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="expense" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="expense" className="flex items-center gap-2">
@@ -216,45 +219,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   </Select>
                 </div>
               </div>
-
-              {/* Credit Card Selection - Only show if multiple cards available */}
-              {creditCards.length > 1 && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 flex items-center gap-2">
-                    <CreditCardIcon className="w-4 h-4" />
-                    Credit Card Used
-                  </label>
-                  <Select value={creditCardId} onValueChange={setCreditCardId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select credit card" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {creditCards.map((card) => (
-                        <SelectItem key={card.id} value={card.id}>
-                          <div className="flex items-center gap-2">
-                            <span>{card.card_name}</span>
-                            <span className="text-muted-foreground">(*{card.last_four_digits})</span>
-                            {card.is_primary && <Badge variant="secondary" className="text-xs">Primary</Badge>}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Show selected card if only one card or card is pre-selected */}
-              {(creditCards.length === 1 || selectedCard) && (
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <CreditCardIcon className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-800">
-                      Using: {selectedCard?.card_name || creditCards[0]?.card_name} 
-                      (*{selectedCard?.last_four_digits || creditCards[0]?.last_four_digits})
-                    </span>
-                  </div>
-                </div>
-              )}
 
               <Button onClick={handleAddExpense} className="w-full">
                 <Plus className="w-4 h-4 mr-2" />

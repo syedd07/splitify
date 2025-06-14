@@ -240,36 +240,6 @@ const Index = () => {
           </div>
         )}
 
-        {/* Selected Card Display */}
-        {selectedCard && (
-          <div className="mb-8">
-            <Card className="bg-white/80 backdrop-blur-sm shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-6 rounded bg-gradient-to-r ${
-                      selectedCard.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
-                      selectedCard.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
-                      selectedCard.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
-                      'from-gray-600 to-gray-800'
-                    } flex items-center justify-center`}>
-                      <CreditCardIcon className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Using: {selectedCard.card_name}</p>
-                      <p className="text-sm text-muted-foreground">•••• {selectedCard.last_four_digits}</p>
-                    </div>
-                  </div>
-                  <Button onClick={handleCardChange} variant="outline" size="sm">
-                    <Edit className="w-4 h-4 mr-2" />
-                    Change Card
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         {/* Step Progress Indicator */}
         <div className="mb-8">
           <div className="flex justify-center items-center space-x-4">
@@ -310,6 +280,36 @@ const Index = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Selected Card Display with Change Option */}
+                {selectedCard && (
+                  <div className="mb-6">
+                    <Card className="bg-white/80 backdrop-blur-sm shadow-sm">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-6 rounded bg-gradient-to-r ${
+                              selectedCard.card_type?.toLowerCase() === 'visa' ? 'from-blue-600 to-blue-800' :
+                              selectedCard.card_type?.toLowerCase() === 'mastercard' ? 'from-red-600 to-orange-600' :
+                              selectedCard.card_type?.toLowerCase() === 'amex' ? 'from-green-600 to-teal-600' :
+                              'from-gray-600 to-gray-800'
+                            } flex items-center justify-center`}>
+                              <CreditCardIcon className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="font-medium">Using: {selectedCard.card_name}</p>
+                              <p className="text-sm text-muted-foreground">•••• {selectedCard.last_four_digits}</p>
+                            </div>
+                          </div>
+                          <Button onClick={handleCardChange} variant="outline" size="sm">
+                            <Edit className="w-4 h-4 mr-2" />
+                            Change Card
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
                 {/* Month and Year Selection */}
                 <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
