@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,6 +31,7 @@ const Index = () => {
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [showCardSelector, setShowCardSelector] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -57,62 +57,79 @@ const Index = () => {
     setSelectedYear(currentYear.toString());
 
     const initializeApp = async () => {
-      // Load selected card from localStorage
-      const storedCard = localStorage.getItem('selectedCard');
-      if (storedCard) {
-        setSelectedCard(JSON.parse(storedCard));
-      }
+      try {
+        // Load selected card from localStorage
+        const storedCard = localStorage.getItem('selectedCard');
+        if (storedCard) {
+          setSelectedCard(JSON.parse(storedCard));
+        }
 
-      // Check if we should load existing transactions
-      const hasExistingTransactions = localStorage.getItem('hasExistingTransactions');
-      
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        // Check if we should load existing transactions
+        const hasExistingTransactions = localStorage.getItem('hasExistingTransactions');
+        
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          setUser(session?.user || null);
+          if (session?.user) {
+            await fetchUserProfile(session.user.id);
+            await fetchUserCards(session.user.id);
+            
+            // If we have existing transactions and a selected card, load them
+            if (hasExistingTransactions && storedCard && !loadingTransactions) {
+              console.log('Triggering loadExistingData from auth state change');
+              await loadExistingData(JSON.parse(storedCard));
+            }
+          } else {
+            setUserProfile(null);
+            setAvailableCards([]);
+          }
+          setLoading(false);
+        });
+
+        // Check initial session
+        const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user || null);
         if (session?.user) {
           await fetchUserProfile(session.user.id);
           await fetchUserCards(session.user.id);
           
           // If we have existing transactions and a selected card, load them
-          if (hasExistingTransactions && storedCard) {
+          if (hasExistingTransactions && storedCard && !loadingTransactions) {
+            console.log('Triggering loadExistingData from initial session');
             await loadExistingData(JSON.parse(storedCard));
           }
-        } else {
-          setUserProfile(null);
-          setAvailableCards([]);
         }
         setLoading(false);
-      });
 
-      // Check initial session
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user || null);
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-        await fetchUserCards(session.user.id);
-        
-        // If we have existing transactions and a selected card, load them
-        if (hasExistingTransactions && storedCard) {
-          await loadExistingData(JSON.parse(storedCard));
-        }
+        return () => subscription.unsubscribe();
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        setLoading(false);
       }
-      setLoading(false);
-
-      return () => subscription.unsubscribe();
     };
 
     initializeApp();
-  }, [currentMonth, currentYear]);
+  }, [currentMonth, currentYear, loadingTransactions]);
 
   // Clear transactions when month/year changes
   useEffect(() => {
+    console.log('Month/Year changed, clearing transactions');
     setTransactions([]);
+    setPeople([]);
+    setCurrentStep('setup');
     // Also clear any existing transaction flags when switching months/years
     localStorage.removeItem('hasExistingTransactions');
   }, [selectedMonth, selectedYear]);
 
   const loadExistingData = async (card: any) => {
+    if (loadingTransactions) {
+      console.log('Already loading transactions, skipping...');
+      return;
+    }
+
     try {
+      setLoadingTransactions(true);
       console.log('Loading existing data for card:', card);
+      console.log('Selected month/year:', selectedMonth, selectedYear);
       
       // Fetch existing transactions for the selected card and current month/year
       const { data: dbTransactions, error } = await supabase
@@ -122,8 +139,15 @@ const Index = () => {
         .eq('month', selectedMonth)
         .eq('year', selectedYear);
 
+      console.log('Database query result:', { dbTransactions, error });
+
       if (error) {
         console.error('Error loading existing transactions:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load previous transactions",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -137,6 +161,8 @@ const Index = () => {
             uniquePeople.add(transaction.spent_by_person_name);
           }
         });
+
+        console.log('Unique people found:', Array.from(uniquePeople));
 
         // Create people array with card owner as first person
         const peopleArray: Person[] = [];
@@ -161,6 +187,8 @@ const Index = () => {
           }
         });
 
+        console.log('Final people array:', peopleArray);
+
         // Convert database transactions to local format
         const localTransactions: Transaction[] = dbTransactions.map(dbTransaction => ({
           id: dbTransaction.id,
@@ -172,6 +200,8 @@ const Index = () => {
           spentBy: dbTransaction.spent_by_person_name,
           isCommonSplit: dbTransaction.is_common_split || false
         }));
+
+        console.log('Local transactions:', localTransactions);
 
         // Set the loaded data
         setPeople(peopleArray);
@@ -185,6 +215,14 @@ const Index = () => {
           title: "Previous data loaded",
           description: `Found ${localTransactions.length} transactions and ${peopleArray.length} people for ${selectedMonth} ${selectedYear}`,
         });
+      } else {
+        console.log('No existing transactions found');
+        // Clear the flag since there's no data to load
+        localStorage.removeItem('hasExistingTransactions');
+        toast({
+          title: "No previous data",
+          description: "No previous transactions found for this month",
+        });
       }
     } catch (error) {
       console.error('Error loading existing data:', error);
@@ -193,6 +231,8 @@ const Index = () => {
         description: "Failed to load previous transactions",
         variant: "destructive",
       });
+    } finally {
+      setLoadingTransactions(false);
     }
   };
 
@@ -384,6 +424,21 @@ const Index = () => {
         {/* Rest of the component - only show if user is logged in */}
         {user && (
           <>
+            {/* Loading indicator for transactions */}
+            {loadingTransactions && (
+              <div className="text-center mb-8">
+                <Card className="max-w-md mx-auto bg-white/80 backdrop-blur-sm">
+                  <CardContent className="p-6">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <h3 className="text-lg font-semibold mb-2">Loading Previous Data</h3>
+                    <p className="text-muted-foreground">
+                      Fetching your existing transactions and people...
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* Progress Steps */}
             <div className="flex items-center justify-center mb-8">
               <div className="flex items-center space-x-4">
@@ -411,7 +466,7 @@ const Index = () => {
             </div>
 
             {/* Setup Step */}
-            {currentStep === 'setup' && (
+            {currentStep === 'setup' && !loadingTransactions && (
               <div className="space-y-6">
                 {/* Selected Credit Card Display */}
                 {selectedCard && (
