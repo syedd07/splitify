@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight, Edit, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings, ArrowRight, Edit, Trash2, Crown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -81,7 +82,7 @@ const Onboarding = () => {
       const { data, error } = await supabase
         .from('credit_cards')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       setCreditCards(data || []);
@@ -284,17 +285,17 @@ const Onboarding = () => {
               </Card>
 
               {/* Existing Credit Cards */}
-              {creditCards.map((card) => (
+              {creditCards.map((card, index) => (
                 <Card 
                   key={card.id} 
                   className={`cursor-pointer transition-all duration-200 ${
                     selectedCardId === card.id 
                       ? 'ring-2 ring-blue-500 bg-blue-50/50 shadow-lg' 
                       : 'hover:shadow-md bg-white/80'
-                  } backdrop-blur-sm`}
+                  } backdrop-blur-sm flex flex-col`}
                   onClick={() => setSelectedCardId(card.id)}
                 >
-                  <CardContent className="p-6">
+                  <CardContent className="p-6 flex flex-col h-full">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-12 h-8 rounded bg-gradient-to-r ${
@@ -310,16 +311,27 @@ const Onboarding = () => {
                           <p className="text-sm text-muted-foreground">•••• {card.last_four_digits}</p>
                         </div>
                       </div>
-                      {selectedCardId === card.id && (
-                        <CheckCircle className="w-6 h-6 text-blue-600" />
+                      <div className="flex items-center gap-2">
+                        {index === 0 && (
+                          <Badge variant="secondary" className="flex items-center gap-1">
+                            <Crown className="w-3 h-3" />
+                            Primary
+                          </Badge>
+                        )}
+                        {selectedCardId === card.id && (
+                          <CheckCircle className="w-6 h-6 text-blue-600" />
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex-grow">
+                      {card.issuing_bank && (
+                        <p className="text-sm text-muted-foreground mb-4">{card.issuing_bank}</p>
                       )}
                     </div>
-                    {card.issuing_bank && (
-                      <p className="text-sm text-muted-foreground mb-4">{card.issuing_bank}</p>
-                    )}
                     
-                    {/* Card Actions */}
-                    <div className="flex gap-2 mt-4">
+                    {/* Card Actions - positioned at bottom */}
+                    <div className="flex gap-2 mt-auto">
                       <Button
                         variant="outline"
                         size="sm"
