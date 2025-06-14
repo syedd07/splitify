@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ const Index = () => {
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [showCardSelector, setShowCardSelector] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -54,39 +56,145 @@ const Index = () => {
     setSelectedMonth(months[currentMonth]);
     setSelectedYear(currentYear.toString());
 
-    // Load selected card from localStorage
-    const storedCard = localStorage.getItem('selectedCard');
-    if (storedCard) {
-      setSelectedCard(JSON.parse(storedCard));
-    }
+    const initializeApp = async () => {
+      // Load selected card from localStorage
+      const storedCard = localStorage.getItem('selectedCard');
+      if (storedCard) {
+        setSelectedCard(JSON.parse(storedCard));
+      }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Check if we should load existing transactions
+      const hasExistingTransactions = localStorage.getItem('hasExistingTransactions');
+      
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        setUser(session?.user || null);
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+          await fetchUserCards(session.user.id);
+          
+          // If we have existing transactions and a selected card, load them
+          if (hasExistingTransactions && storedCard) {
+            await loadExistingData(JSON.parse(storedCard));
+          }
+        } else {
+          setUserProfile(null);
+          setAvailableCards([]);
+        }
+        setLoading(false);
+      });
+
+      // Check initial session
+      const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user || null);
       if (session?.user) {
-        fetchUserProfile(session.user.id);
-        fetchUserCards(session.user.id);
-      } else {
-        setUserProfile(null);
-        setAvailableCards([]);
+        await fetchUserProfile(session.user.id);
+        await fetchUserCards(session.user.id);
+        
+        // If we have existing transactions and a selected card, load them
+        if (hasExistingTransactions && storedCard) {
+          await loadExistingData(JSON.parse(storedCard));
+        }
       }
-    });
+      setLoading(false);
 
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-        fetchUserCards(session.user.id);
-      }
-    });
+      return () => subscription.unsubscribe();
+    };
 
-    return () => subscription.unsubscribe();
+    initializeApp();
   }, [currentMonth, currentYear]);
 
   // Clear transactions when month/year changes
   useEffect(() => {
     setTransactions([]);
+    // Also clear any existing transaction flags when switching months/years
+    localStorage.removeItem('hasExistingTransactions');
   }, [selectedMonth, selectedYear]);
+
+  const loadExistingData = async (card: any) => {
+    try {
+      console.log('Loading existing data for card:', card);
+      
+      // Fetch existing transactions for the selected card and current month/year
+      const { data: dbTransactions, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('credit_card_id', card.id)
+        .eq('month', selectedMonth)
+        .eq('year', selectedYear);
+
+      if (error) {
+        console.error('Error loading existing transactions:', error);
+        return;
+      }
+
+      if (dbTransactions && dbTransactions.length > 0) {
+        console.log('Found existing transactions:', dbTransactions.length);
+        
+        // Extract unique people from transactions
+        const uniquePeople = new Set<string>();
+        dbTransactions.forEach(transaction => {
+          if (transaction.spent_by_person_name && transaction.spent_by_person_name !== 'common') {
+            uniquePeople.add(transaction.spent_by_person_name);
+          }
+        });
+
+        // Create people array with card owner as first person
+        const peopleArray: Person[] = [];
+        
+        // Add card owner first (from user profile)
+        if (userProfile?.full_name) {
+          peopleArray.push({
+            id: userProfile.full_name,
+            name: userProfile.full_name,
+            isCardOwner: true
+          });
+        }
+
+        // Add other people from transactions
+        uniquePeople.forEach(personName => {
+          if (personName !== userProfile?.full_name) {
+            peopleArray.push({
+              id: personName,
+              name: personName,
+              isCardOwner: false
+            });
+          }
+        });
+
+        // Convert database transactions to local format
+        const localTransactions: Transaction[] = dbTransactions.map(dbTransaction => ({
+          id: dbTransaction.id,
+          amount: parseFloat(dbTransaction.amount.toString()),
+          description: dbTransaction.description,
+          date: dbTransaction.transaction_date.split('-')[2], // Extract day from YYYY-MM-DD
+          type: dbTransaction.transaction_type as 'expense' | 'payment',
+          category: dbTransaction.category as 'personal' | 'common',
+          spentBy: dbTransaction.spent_by_person_name,
+          isCommonSplit: dbTransaction.is_common_split || false
+        }));
+
+        // Set the loaded data
+        setPeople(peopleArray);
+        setTransactions(localTransactions);
+        setCurrentStep('transactions');
+        
+        // Clear the flag since we've loaded the data
+        localStorage.removeItem('hasExistingTransactions');
+        
+        toast({
+          title: "Previous data loaded",
+          description: `Found ${localTransactions.length} transactions and ${peopleArray.length} people for ${selectedMonth} ${selectedYear}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load previous transactions",
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -137,6 +245,8 @@ const Index = () => {
     setPeople([]);
     setTransactions([]);
     setCurrentStep('setup');
+    localStorage.removeItem('selectedCard');
+    localStorage.removeItem('hasExistingTransactions');
   };
 
   const handleStartSplitting = () => {
@@ -179,6 +289,17 @@ const Index = () => {
   const handleBackToTransactions = () => {
     setCurrentStep('transactions');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg text-muted-foreground">Loading your data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">

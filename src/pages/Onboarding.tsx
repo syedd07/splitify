@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +24,7 @@ const Onboarding = () => {
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -57,11 +59,10 @@ const Onboarding = () => {
       const { data, error } = await supabase
         .from('credit_cards')
         .select('*')
-        .order('created_at', { ascending: true }); // First card should be primary
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       
-      // Mark only the first card as primary
       const updatedCards = (data || []).map((card, index) => ({
         ...card,
         is_primary: index === 0
@@ -69,7 +70,6 @@ const Onboarding = () => {
       
       setCreditCards(updatedCards);
       
-      // Auto-select the first (primary) card
       if (updatedCards.length > 0) {
         setSelectedCardId(updatedCards[0].id);
       }
@@ -82,15 +82,34 @@ const Onboarding = () => {
     }
   };
 
+  const checkForExistingTransactions = async (cardId: string) => {
+    try {
+      setCheckingTransactions(true);
+      
+      const { data: transactions, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('credit_card_id', cardId)
+        .limit(1);
+
+      if (error) throw error;
+
+      return transactions && transactions.length > 0;
+    } catch (error) {
+      console.error('Error checking transactions:', error);
+      return false;
+    } finally {
+      setCheckingTransactions(false);
+    }
+  };
+
   const handleCardAdded = (newCard: CreditCardData) => {
-    // If this is the first card, make it primary
     const isFirstCard = creditCards.length === 0;
     const cardWithPrimary = { ...newCard, is_primary: isFirstCard };
     
     setCreditCards(prev => [cardWithPrimary, ...prev]);
     setShowAddCard(false);
     
-    // Auto-select the new card if it's the first one
     if (isFirstCard) {
       setSelectedCardId(cardWithPrimary.id);
     }
@@ -108,7 +127,7 @@ const Onboarding = () => {
     navigate('/');
   };
 
-  const handleStartSplitting = () => {
+  const handleStartSplitting = async () => {
     if (!selectedCardId) {
       toast({
         title: "Please select a card",
@@ -120,8 +139,22 @@ const Onboarding = () => {
     
     const selectedCard = creditCards.find(card => card.id === selectedCardId);
     if (selectedCard) {
-      // Store selected card info in localStorage or navigate with state
       localStorage.setItem('selectedCard', JSON.stringify(selectedCard));
+      
+      // Check for existing transactions
+      const hasTransactions = await checkForExistingTransactions(selectedCardId);
+      
+      if (hasTransactions) {
+        // Store a flag to indicate we should go to step 2
+        localStorage.setItem('hasExistingTransactions', 'true');
+        toast({
+          title: "Previous transactions found",
+          description: "Loading your existing transactions...",
+        });
+      } else {
+        localStorage.removeItem('hasExistingTransactions');
+      }
+      
       navigate('/');
     }
   };
@@ -216,12 +249,21 @@ const Onboarding = () => {
                 onClick={handleStartSplitting}
                 size="lg"
                 className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
-                disabled={!selectedCardId}
+                disabled={!selectedCardId || checkingTransactions}
               >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                Start Splitting
+                {checkingTransactions ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Checking Transactions...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    Start Splitting
+                  </>
+                )}
               </Button>
-              {!selectedCardId && (
+              {!selectedCardId && !checkingTransactions && (
                 <p className="text-sm text-muted-foreground mt-2">
                   Please select a credit card to continue
                 </p>
@@ -310,9 +352,19 @@ const Onboarding = () => {
                   onClick={handleStartSplitting}
                   size="lg"
                   className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
+                  disabled={checkingTransactions}
                 >
-                  <CheckCircle className="w-5 h-5 mr-2" />
-                  Start Splitting Bills
+                  {checkingTransactions ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Checking Transactions...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      Start Splitting Bills
+                    </>
+                  )}
                 </Button>
               </div>
             )}
