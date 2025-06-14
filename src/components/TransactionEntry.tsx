@@ -70,6 +70,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       // Get ALL people including card owner for splitting
       const allPeople = people;
       const splitAmount = parseFloat(amount) / allPeople.length;
+      const baseTimestamp = Date.now();
       
       console.log('Common expense split calculation:');
       console.log('Total amount:', amount);
@@ -77,7 +78,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       console.log('Split amount per person:', splitAmount);
       console.log('People involved:', allPeople.map(p => p.name));
       
-      allPeople.forEach(person => {
+      allPeople.forEach((person, index) => {
         const transaction: Omit<Transaction, 'id'> = {
           amount: splitAmount,
           description,
@@ -89,7 +90,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           isCommonSplit: true // Flag to identify this was originally a common expense
         };
 
-        onAddTransaction({ ...transaction, id: `${Date.now()}-${person.id}` } as Transaction);
+        // Generate unique ID for each person by adding index to timestamp
+        const uniqueId = `${baseTimestamp}-${index}-${person.id}`;
+        onAddTransaction({ ...transaction, id: uniqueId } as Transaction);
+        
+        console.log(`Added transaction for ${person.name} with ID: ${uniqueId}, amount: ${splitAmount}`);
       });
 
       toast({
