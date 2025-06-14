@@ -381,6 +381,7 @@ const Index = () => {
                   people={people} 
                   setPeople={setPeople}
                   cardOwnerName={userProfile?.full_name || user?.email || 'Card Owner'}
+                  userProfile={userProfile}
                 />
 
                 <div className="text-center">

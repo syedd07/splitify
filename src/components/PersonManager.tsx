@@ -11,22 +11,36 @@ interface PersonManagerProps {
   people: Person[];
   setPeople: React.Dispatch<React.SetStateAction<Person[]>>;
   cardOwnerName: string;
+  userProfile: any;
 }
 
-const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople, cardOwnerName }) => {
+const PersonManager: React.FC<PersonManagerProps> = ({ people, setPeople, cardOwnerName, userProfile }) => {
   const [newPersonName, setNewPersonName] = useState('');
 
   // Add card owner as first person when component mounts
   useEffect(() => {
-    if (people.length === 0 && cardOwnerName) {
+    if (people.length === 0 && userProfile) {
+      const displayName = userProfile.full_name || cardOwnerName;
       const cardOwner: Person = {
         id: 'card-owner',
-        name: cardOwnerName,
+        name: displayName,
         isCardOwner: true
       };
       setPeople([cardOwner]);
     }
-  }, [cardOwnerName, people.length, setPeople]);
+  }, [userProfile, cardOwnerName, people.length, setPeople]);
+
+  // Update card owner name when userProfile changes
+  useEffect(() => {
+    if (userProfile && people.length > 0) {
+      const displayName = userProfile.full_name || cardOwnerName;
+      setPeople(prev => prev.map(person => 
+        person.id === 'card-owner' 
+          ? { ...person, name: displayName }
+          : person
+      ));
+    }
+  }, [userProfile, cardOwnerName, setPeople]);
 
   const addPerson = () => {
     if (newPersonName.trim()) {
