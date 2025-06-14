@@ -45,7 +45,6 @@ const Auth = () => {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/onboarding`,
             data: {
               full_name: fullName,
             }
@@ -56,8 +55,11 @@ const Auth = () => {
 
         toast({
           title: "Success!",
-          description: "Please check your email to verify your account.",
+          description: "Account created successfully! You can now sign in.",
         });
+        
+        // Auto switch to login after successful signup
+        setIsLogin(true);
       }
     } catch (error: any) {
       toast({

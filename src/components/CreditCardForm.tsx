@@ -56,9 +56,8 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
   const verifyBIN = async (cardDigits: string) => {
     setIsVerifying(true);
     try {
-      const bin = cardDigits.substring(0, 8); // Use first 8 digits for better accuracy
+      const bin = cardDigits.substring(0, 8);
       
-      // Try binlist.net first (no API key required, but has rate limits)
       try {
         const response = await fetch(`https://lookup.binlist.net/${bin}`, {
           headers: {
@@ -69,7 +68,6 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
         if (response.ok) {
           const data = await response.json();
           setBinInfo({
-            bank: data.bank?.name || 'Unknown Bank',
             brand: data.brand?.charAt(0).toUpperCase() + data.brand?.slice(1) || 'Unknown',
             type: data.type?.charAt(0).toUpperCase() + data.type?.slice(1) || 'Unknown',
             country: data.country?.name || 'Unknown',
@@ -80,19 +78,9 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
         }
       } catch (error) {
         console.log('Binlist API failed, using fallback:', error);
-        // Enhanced fallback with more realistic data based on common Indian BIN ranges
-        const bankMappings = {
-          '4': ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank'],
-          '5': ['ICICI Bank', 'HDFC Bank', 'Kotak Mahindra Bank', 'Yes Bank'],
-          '6': ['RuPay - State Bank of India', 'RuPay - HDFC Bank', 'RuPay - ICICI Bank']
-        };
-        
         const firstDigit = bin.charAt(0);
-        const possibleBanks = bankMappings[firstDigit] || ['HDFC Bank', 'ICICI Bank', 'State Bank of India'];
-        const randomBank = possibleBanks[Math.floor(Math.random() * possibleBanks.length)];
         
         setBinInfo({
-          bank: randomBank,
           brand: firstDigit === '4' ? 'Visa' : firstDigit === '5' ? 'Mastercard' : 'RuPay',
           type: 'Credit',
           country: 'India',
@@ -102,7 +90,6 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     } catch (error) {
       console.error('BIN verification failed:', error);
       setBinInfo({
-        bank: 'Unable to verify',
         brand: 'Unknown',
         type: 'Unknown',
         country: 'Unknown',
@@ -119,7 +106,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     if (!isConfirmed) {
       toast({
         title: "Confirmation Required",
-        description: "Please confirm the bank information is correct",
+        description: "Please confirm the card information is correct",
         variant: "destructive",
       });
       return;
@@ -128,7 +115,6 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     setLoading(true);
 
     try {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -145,9 +131,8 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           card_name: cardName,
           last_four_digits: lastFourDigits,
           bin_info: binInfo,
-          issuing_bank: binInfo?.bank,
           card_type: binInfo?.brand,
-          is_primary: true // First card is always primary for now
+          is_primary: true
         })
         .select()
         .single();
@@ -230,10 +215,6 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
                 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Issuing Bank:</span>
-                    <p className="font-medium">{binInfo.bank}</p>
-                  </div>
-                  <div>
                     <span className="text-muted-foreground">Card Brand:</span>
                     <p className="font-medium">{binInfo.brand}</p>
                   </div>
@@ -270,7 +251,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
                   
                   {!isConfirmed && (
                     <p className="text-sm text-muted-foreground">
-                      Please confirm the bank information is correct
+                      Please confirm the card information is correct
                     </p>
                   )}
                 </div>
@@ -285,7 +266,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
               <div className="text-sm">
                 <p className="font-medium text-yellow-800">Security Note</p>
                 <p className="text-yellow-700">
-                  We only store the last 4 digits of your card and bank information. Your full card number is never stored.
+                  We only store the last 4 digits of your card. Your full card number is never stored.
                 </p>
               </div>
             </div>

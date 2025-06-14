@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -134,7 +133,6 @@ const Index = () => {
               Credit Ease Divide
             </h1>
           </div>
-          
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
@@ -254,7 +252,7 @@ const Index = () => {
                 <PersonManager 
                   people={people} 
                   setPeople={setPeople}
-                  cardOwnerName={userProfile?.full_name || user?.email || 'Card Owner'}
+                  cardOwnerName={userProfile?.full_name || 'Card Owner'}
                 />
 
                 <div className="text-center">
