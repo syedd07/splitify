@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, Settings } from 'lucide-react';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +24,7 @@ const Onboarding = () => {
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -56,10 +58,22 @@ const Onboarding = () => {
       const { data, error } = await supabase
         .from('credit_cards')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true }); // First card should be primary
 
       if (error) throw error;
-      setCreditCards(data || []);
+      
+      // Mark only the first card as primary
+      const updatedCards = (data || []).map((card, index) => ({
+        ...card,
+        is_primary: index === 0
+      }));
+      
+      setCreditCards(updatedCards);
+      
+      // Auto-select the first (primary) card
+      if (updatedCards.length > 0) {
+        setSelectedCardId(updatedCards[0].id);
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -70,8 +84,17 @@ const Onboarding = () => {
   };
 
   const handleCardAdded = (newCard: CreditCardData) => {
-    setCreditCards(prev => [newCard, ...prev]);
+    // If this is the first card, make it primary
+    const isFirstCard = creditCards.length === 0;
+    const cardWithPrimary = { ...newCard, is_primary: isFirstCard };
+    
+    setCreditCards(prev => [cardWithPrimary, ...prev]);
     setShowAddCard(false);
+    
+    // Auto-select the new card if it's the first one
+    if (isFirstCard) {
+      setSelectedCardId(cardWithPrimary.id);
+    }
     
     if (creditCards.length === 0) {
       toast({
@@ -86,8 +109,26 @@ const Onboarding = () => {
     navigate('/');
   };
 
-  const handleGetStarted = () => {
-    navigate('/');
+  const handleStartSplitting = () => {
+    if (!selectedCardId) {
+      toast({
+        title: "Please select a card",
+        description: "Choose a credit card to continue with bill splitting",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const selectedCard = creditCards.find(card => card.id === selectedCardId);
+    if (selectedCard) {
+      // Store selected card info in localStorage or navigate with state
+      localStorage.setItem('selectedCard', JSON.stringify(selectedCard));
+      navigate('/');
+    }
+  };
+
+  const handleCardSelect = (cardId: string) => {
+    setSelectedCardId(cardId);
   };
 
   if (loading) {
@@ -112,9 +153,9 @@ const Onboarding = () => {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={() => navigate('/')} variant="outline" size="sm">
-                <Settings className="w-4 h-4 mr-2" />
-                Dashboard
+              <Button onClick={() => navigate('/profile')} variant="outline" size="sm">
+                <User className="w-4 h-4 mr-2" />
+                Profile
               </Button>
               <Button onClick={handleSignOut} variant="outline" size="sm">
                 <LogOut className="w-4 h-4 mr-2" />
@@ -130,7 +171,7 @@ const Onboarding = () => {
                 Welcome back, {user.user_metadata?.full_name || user.email}!
               </h2>
               <p className="text-muted-foreground">
-                Manage your credit cards and start splitting bills with ease
+                Select a credit card to start splitting bills with ease
               </p>
             </div>
           )}
@@ -164,6 +205,8 @@ const Onboarding = () => {
                   key={card.id}
                   card={card}
                   onUpdate={fetchCreditCards}
+                  isSelected={selectedCardId === card.id}
+                  onSelect={handleCardSelect}
                 />
               ))}
             </div>
@@ -171,13 +214,19 @@ const Onboarding = () => {
             {/* Quick Actions */}
             <div className="mt-8 text-center">
               <Button
-                onClick={handleGetStarted}
+                onClick={handleStartSplitting}
                 size="lg"
                 className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 px-8 py-3 text-lg"
+                disabled={!selectedCardId}
               >
                 <CheckCircle className="w-5 h-5 mr-2" />
-                Go to Dashboard
+                Start Splitting
               </Button>
+              {!selectedCardId && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Please select a credit card to continue
+                </p>
+              )}
             </div>
           </div>
         </div>

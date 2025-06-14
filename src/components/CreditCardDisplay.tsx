@@ -37,9 +37,16 @@ interface CreditCardDisplayProps {
     is_primary: boolean;
   };
   onUpdate: () => void;
+  isSelected?: boolean;
+  onSelect?: (cardId: string) => void;
 }
 
-const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ card, onUpdate }) => {
+const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ 
+  card, 
+  onUpdate, 
+  isSelected = false, 
+  onSelect 
+}) => {
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState(card.card_name);
@@ -125,8 +132,21 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ card, onUpdate })
     }
   };
 
+  const handleCardClick = () => {
+    if (onSelect) {
+      onSelect(card.id);
+    }
+  };
+
   return (
-    <Card className="overflow-hidden shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+    <Card 
+      className={`overflow-hidden shadow-lg border-2 cursor-pointer transition-all ${
+        isSelected 
+          ? 'border-blue-500 bg-blue-50/50 backdrop-blur-sm' 
+          : 'border-gray-200 bg-white/80 backdrop-blur-sm hover:border-gray-300'
+      }`}
+      onClick={handleCardClick}
+    >
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -146,10 +166,15 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ card, onUpdate })
                 Primary
               </Badge>
             )}
+            {isSelected && (
+              <Badge variant="default" className="bg-blue-500">
+                Selected
+              </Badge>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           {card.issuing_bank && (
             <div>
               <p className="text-xs text-muted-foreground">Issuing Bank</p>
@@ -167,7 +192,12 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ card, onUpdate })
         <div className="flex justify-end gap-2">
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={loading}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={loading}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
               </Button>
@@ -207,7 +237,13 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ card, onUpdate })
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" disabled={loading}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-red-600 hover:text-red-700" 
+                disabled={loading}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Remove
               </Button>
