@@ -118,12 +118,20 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     setLoading(true);
 
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       const cleanCardNumber = cardNumber.replace(/\s/g, '');
       const lastFourDigits = cleanCardNumber.slice(-4);
 
       const { data, error } = await supabase
         .from('credit_cards')
         .insert({
+          user_id: user.id,
           card_name: cardName,
           last_four_digits: lastFourDigits,
           bin_info: binInfo,
