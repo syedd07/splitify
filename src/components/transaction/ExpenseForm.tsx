@@ -74,9 +74,10 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
       console.log('Split amount per person:', splitAmount);
       console.log('People list:', people.map(p => ({ id: p.id, name: p.name })));
       
-      // Create individual transactions for each person
-      people.forEach((person, index) => {
-        const uniqueId = `common-${Date.now()}-${index}-${person.id}`;
+      // Create individual transactions for each person - process all at once
+      const allTransactions: Transaction[] = people.map((person, index) => {
+        const baseTimestamp = Date.now();
+        const uniqueId = `common-${baseTimestamp}-${index}-${person.id}`;
         
         const transaction: Transaction = {
           id: uniqueId,
@@ -97,10 +98,13 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({
           spentBy: transaction.spentBy
         });
 
-        // Add each transaction individually with a small delay to ensure unique IDs
-        setTimeout(() => {
-          onAddTransaction(transaction);
-        }, index * 10);
+        return transaction;
+      });
+
+      // Add all transactions at once
+      allTransactions.forEach(transaction => {
+        console.log('Adding transaction to state:', transaction.id, 'for person:', people.find(p => p.id === transaction.spentBy)?.name);
+        onAddTransaction(transaction);
       });
 
       toast({
