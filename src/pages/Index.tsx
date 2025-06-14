@@ -20,8 +20,18 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
-  const [selectedMonth, setSelectedMonth] = useState<string>('');
-  const [selectedYear, setSelectedYear] = useState<string>('');
+  // Get current date info first
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-based (0 = January)
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  // Initialize with current month and year immediately
+  const [selectedMonth, setSelectedMonth] = useState<string>(months[currentMonth]);
+  const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [people, setPeople] = useState<Person[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
@@ -32,30 +42,22 @@ const Index = () => {
   const [showCardSelector, setShowCardSelector] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [monthYearInitialized, setMonthYearInitialized] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Get current date info
-  const currentDate = new Date();
-  const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth(); // 0-based (0 = January)
-
   // Filter months - only show past months and current month
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   const availableMonths = months.slice(0, currentMonth + 1);
 
   // Only show current year and past 2 years
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
+  // Mark month/year as initialized after first render
   useEffect(() => {
-    // Pre-select current month and year
-    setSelectedMonth(months[currentMonth]);
-    setSelectedYear(currentYear.toString());
+    setMonthYearInitialized(true);
+  }, []);
 
+  useEffect(() => {
     const initializeApp = async () => {
       try {
         // Load selected card from localStorage
@@ -73,8 +75,8 @@ const Index = () => {
             await fetchUserProfile(session.user.id);
             await fetchUserCards(session.user.id);
             
-            // If we have existing transactions and a selected card, load them
-            if (hasExistingTransactions && storedCard && !loadingTransactions) {
+            // Only load existing data if month/year are properly initialized
+            if (hasExistingTransactions && storedCard && !loadingTransactions && monthYearInitialized && selectedMonth && selectedYear) {
               console.log('Triggering loadExistingData from auth state change');
               await loadExistingData(JSON.parse(storedCard));
             }
@@ -92,8 +94,8 @@ const Index = () => {
           await fetchUserProfile(session.user.id);
           await fetchUserCards(session.user.id);
           
-          // If we have existing transactions and a selected card, load them
-          if (hasExistingTransactions && storedCard && !loadingTransactions) {
+          // Only load existing data if month/year are properly initialized
+          if (hasExistingTransactions && storedCard && !loadingTransactions && monthYearInitialized && selectedMonth && selectedYear) {
             console.log('Triggering loadExistingData from initial session');
             await loadExistingData(JSON.parse(storedCard));
           }
@@ -107,22 +109,33 @@ const Index = () => {
       }
     };
 
-    initializeApp();
-  }, [currentMonth, currentYear, loadingTransactions]);
+    // Only initialize if month/year are set
+    if (monthYearInitialized) {
+      initializeApp();
+    }
+  }, [monthYearInitialized, selectedMonth, selectedYear, loadingTransactions]);
 
-  // Clear transactions when month/year changes
+  // Clear transactions when month/year changes (but not on initial load)
   useEffect(() => {
-    console.log('Month/Year changed, clearing transactions');
-    setTransactions([]);
-    setPeople([]);
-    setCurrentStep('setup');
-    // Also clear any existing transaction flags when switching months/years
-    localStorage.removeItem('hasExistingTransactions');
-  }, [selectedMonth, selectedYear]);
+    if (monthYearInitialized) {
+      console.log('Month/Year changed, clearing transactions');
+      setTransactions([]);
+      setPeople([]);
+      setCurrentStep('setup');
+      // Also clear any existing transaction flags when switching months/years
+      localStorage.removeItem('hasExistingTransactions');
+    }
+  }, [selectedMonth, selectedYear, monthYearInitialized]);
 
   const loadExistingData = async (card: any) => {
     if (loadingTransactions) {
       console.log('Already loading transactions, skipping...');
+      return;
+    }
+
+    // Don't proceed if month/year are not properly set
+    if (!selectedMonth || !selectedYear) {
+      console.log('Month/Year not set, skipping loadExistingData');
       return;
     }
 
