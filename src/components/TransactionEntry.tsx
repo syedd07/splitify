@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,57 +35,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [spentBy, setSpentBy] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
   const [loading, setLoading] = useState(false);
-
-  // Load transactions from database on component mount
-  useEffect(() => {
-    loadTransactionsFromDB();
-  }, [month, year]);
-
-  const loadTransactionsFromDB = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Get selected card from localStorage
-      const storedCard = localStorage.getItem('selectedCard');
-      if (!storedCard) return;
-
-      const selectedCard = JSON.parse(storedCard);
-
-      const { data: dbTransactions, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('credit_card_id', selectedCard.id)
-        .eq('month', month)
-        .eq('year', year);
-
-      if (error) {
-        console.error('Error loading transactions:', error);
-        return;
-      }
-
-      // Convert database transactions to local format and add them
-      if (dbTransactions) {
-        dbTransactions.forEach(dbTransaction => {
-          const localTransaction: Transaction = {
-            id: dbTransaction.id,
-            amount: parseFloat(dbTransaction.amount.toString()),
-            description: dbTransaction.description,
-            date: dbTransaction.transaction_date,
-            type: dbTransaction.transaction_type as 'expense' | 'payment',
-            category: dbTransaction.category as 'personal' | 'common',
-            spentBy: dbTransaction.spent_by_person_name,
-            isCommonSplit: dbTransaction.is_common_split || false
-          };
-
-          onAddTransaction(localTransaction);
-        });
-      }
-    } catch (error) {
-      console.error('Error loading transactions:', error);
-    }
-  };
 
   const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
     try {

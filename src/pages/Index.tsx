@@ -42,7 +42,6 @@ const Index = () => {
   const [showCardSelector, setShowCardSelector] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
-  const [monthYearInitialized, setMonthYearInitialized] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -51,11 +50,6 @@ const Index = () => {
 
   // Only show current year and past 2 years
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
-
-  // Mark month/year as initialized after first render
-  useEffect(() => {
-    setMonthYearInitialized(true);
-  }, []);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -75,9 +69,8 @@ const Index = () => {
             await fetchUserProfile(session.user.id);
             await fetchUserCards(session.user.id);
             
-            // Only load existing data if month/year are properly initialized
-            if (hasExistingTransactions && storedCard && !loadingTransactions && monthYearInitialized && selectedMonth && selectedYear) {
-              console.log('Triggering loadExistingData from auth state change');
+            // Load existing data if conditions are met
+            if (hasExistingTransactions && storedCard && selectedMonth && selectedYear) {
               await loadExistingData(JSON.parse(storedCard));
             }
           } else {
@@ -94,9 +87,8 @@ const Index = () => {
           await fetchUserProfile(session.user.id);
           await fetchUserCards(session.user.id);
           
-          // Only load existing data if month/year are properly initialized
-          if (hasExistingTransactions && storedCard && !loadingTransactions && monthYearInitialized && selectedMonth && selectedYear) {
-            console.log('Triggering loadExistingData from initial session');
+          // Load existing data if conditions are met
+          if (hasExistingTransactions && storedCard && selectedMonth && selectedYear) {
             await loadExistingData(JSON.parse(storedCard));
           }
         }
@@ -109,40 +101,24 @@ const Index = () => {
       }
     };
 
-    // Only initialize if month/year are set
-    if (monthYearInitialized) {
-      initializeApp();
-    }
-  }, [monthYearInitialized, selectedMonth, selectedYear, loadingTransactions]);
+    initializeApp();
+  }, [selectedMonth, selectedYear]);
 
-  // Clear transactions when month/year changes (but not on initial load)
+  // Clear transactions when month/year changes
   useEffect(() => {
-    if (monthYearInitialized) {
-      console.log('Month/Year changed, clearing transactions');
-      setTransactions([]);
-      setPeople([]);
-      setCurrentStep('setup');
-      // Also clear any existing transaction flags when switching months/years
-      localStorage.removeItem('hasExistingTransactions');
-    }
-  }, [selectedMonth, selectedYear, monthYearInitialized]);
+    setTransactions([]);
+    setPeople([]);
+    setCurrentStep('setup');
+    localStorage.removeItem('hasExistingTransactions');
+  }, [selectedMonth, selectedYear]);
 
   const loadExistingData = async (card: any) => {
-    if (loadingTransactions) {
-      console.log('Already loading transactions, skipping...');
-      return;
-    }
-
-    // Don't proceed if month/year are not properly set
-    if (!selectedMonth || !selectedYear) {
-      console.log('Month/Year not set, skipping loadExistingData');
+    if (loadingTransactions || !selectedMonth || !selectedYear) {
       return;
     }
 
     try {
       setLoadingTransactions(true);
-      console.log('Loading existing data for card:', card);
-      console.log('Selected month/year:', selectedMonth, selectedYear);
       
       // Fetch existing transactions for the selected card and current month/year
       const { data: dbTransactions, error } = await supabase
@@ -151,8 +127,6 @@ const Index = () => {
         .eq('credit_card_id', card.id)
         .eq('month', selectedMonth)
         .eq('year', selectedYear);
-
-      console.log('Database query result:', { dbTransactions, error });
 
       if (error) {
         console.error('Error loading existing transactions:', error);
@@ -165,8 +139,6 @@ const Index = () => {
       }
 
       if (dbTransactions && dbTransactions.length > 0) {
-        console.log('Found existing transactions:', dbTransactions.length);
-        
         // Extract unique people from transactions
         const uniquePeople = new Set<string>();
         dbTransactions.forEach(transaction => {
@@ -174,8 +146,6 @@ const Index = () => {
             uniquePeople.add(transaction.spent_by_person_name);
           }
         });
-
-        console.log('Unique people found:', Array.from(uniquePeople));
 
         // Create people array with card owner as first person
         const peopleArray: Person[] = [];
@@ -200,8 +170,6 @@ const Index = () => {
           }
         });
 
-        console.log('Final people array:', peopleArray);
-
         // Convert database transactions to local format
         const localTransactions: Transaction[] = dbTransactions.map(dbTransaction => ({
           id: dbTransaction.id,
@@ -213,8 +181,6 @@ const Index = () => {
           spentBy: dbTransaction.spent_by_person_name,
           isCommonSplit: dbTransaction.is_common_split || false
         }));
-
-        console.log('Local transactions:', localTransactions);
 
         // Set the loaded data
         setPeople(peopleArray);
@@ -229,7 +195,6 @@ const Index = () => {
           description: `Found ${localTransactions.length} transactions and ${peopleArray.length} people for ${selectedMonth} ${selectedYear}`,
         });
       } else {
-        console.log('No existing transactions found');
         // Clear the flag since there's no data to load
         localStorage.removeItem('hasExistingTransactions');
         toast({
