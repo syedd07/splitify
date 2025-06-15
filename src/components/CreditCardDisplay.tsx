@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Crown, Trash2, Edit, Loader2 } from 'lucide-react';
+import { CreditCard, Crown, Trash2, Edit, Loader2, UserPlus, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -26,6 +26,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import CardInviteForm from './CardInviteForm';
+import CardMembersManager from './CardMembersManager';
 
 interface CreditCardDisplayProps {
   card: {
@@ -35,22 +37,29 @@ interface CreditCardDisplayProps {
     issuing_bank?: string;
     card_type?: string;
     is_primary: boolean;
+    user_id?: string;
   };
   onUpdate: () => void;
   isSelected?: boolean;
   onSelect?: (cardId: string) => void;
+  currentUserId?: string;
 }
 
 const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({ 
   card, 
   onUpdate, 
   isSelected = false, 
-  onSelect 
+  onSelect,
+  currentUserId 
 }) => {
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [editName, setEditName] = useState(card.card_name);
   const { toast } = useToast();
+
+  const isOwner = card.user_id === currentUserId;
 
   const getCardGradient = (cardType?: string) => {
     switch (cardType?.toLowerCase()) {
@@ -166,6 +175,11 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                 Primary
               </Badge>
             )}
+            {!isOwner && (
+              <Badge variant="outline" className="text-green-600 border-green-600">
+                Member
+              </Badge>
+            )}
             {isSelected && (
               <Badge variant="default" className="bg-blue-500">
                 Selected
@@ -190,7 +204,39 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
         </div>
 
         <div className="flex justify-end gap-2">
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          {/* Invite Users - Only for owners */}
+          {isOwner && (
+            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  disabled={loading}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Invite
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="p-0 border-0 bg-transparent shadow-none">
+                <CardInviteForm
+                  cardId={card.id}
+                  cardName={card.card_name}
+                  onClose={() => setInviteOpen(false)}
+                  onInviteSent={() => {
+                    setInviteOpen(false);
+                    toast({
+                      title: "Success!",
+                      description: "Invitation sent successfully!",
+                    });
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {/* View Members */}
+          <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
             <DialogTrigger asChild>
               <Button 
                 variant="outline" 
@@ -198,82 +244,112 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                 disabled={loading}
                 onClick={(e) => e.stopPropagation()}
               >
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
+                <Users className="w-4 h-4 mr-2" />
+                Members
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Edit Card Name</DialogTitle>
+                <DialogTitle>Manage Members - {card.card_name}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cardName">Card Name</Label>
-                  <Input
-                    id="cardName"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="e.g., My HDFC Card"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleEdit} disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
+              <CardMembersManager
+                cardId={card.id}
+                cardName={card.card_name}
+                isOwner={isOwner}
+              />
             </DialogContent>
           </Dialog>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="text-red-600 hover:text-red-700" 
-                disabled={loading}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Remove
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove Credit Card</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to remove "{card.card_name}"? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleRemove}
-                  className="bg-red-600 hover:bg-red-700"
+          {/* Edit - Only for owners */}
+          {isOwner && (
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
                   disabled={loading}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Removing...
-                    </>
-                  ) : (
-                    'Remove Card'
-                  )}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Card Name</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="cardName">Card Name</Label>
+                    <Input
+                      id="cardName"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="e.g., My HDFC Card"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleEdit} disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {/* Remove - Only for owners */}
+          {isOwner && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-red-600 hover:text-red-700" 
+                  disabled={loading}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Remove
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove Credit Card</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to remove "{card.card_name}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleRemove}
+                    className="bg-red-600 hover:bg-red-700"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Removing...
+                      </>
+                    ) : (
+                      'Remove Card'
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </CardContent>
     </Card>

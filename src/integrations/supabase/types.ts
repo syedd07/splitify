@@ -9,6 +9,97 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      card_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          credit_card_id: string
+          expires_at: string
+          id: string
+          invited_at: string
+          invited_email: string
+          invited_user_id: string | null
+          inviter_id: string
+          role: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          credit_card_id: string
+          expires_at?: string
+          id?: string
+          invited_at?: string
+          invited_email: string
+          invited_user_id?: string | null
+          inviter_id: string
+          role?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          credit_card_id?: string
+          expires_at?: string
+          id?: string
+          invited_at?: string
+          invited_email?: string
+          invited_user_id?: string | null
+          inviter_id?: string
+          role?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_invitations_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_members: {
+        Row: {
+          created_at: string
+          credit_card_id: string
+          id: string
+          joined_at: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credit_card_id: string
+          id?: string
+          joined_at?: string
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credit_card_id?: string
+          id?: string
+          joined_at?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_members_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_cards: {
         Row: {
           bin_info: Json | null

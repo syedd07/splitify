@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +34,40 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [spentBy, setSpentBy] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
   const [loading, setLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('member');
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
+      // Check user's role for the current card
+      const storedCard = localStorage.getItem('selectedCard');
+      if (storedCard && user) {
+        const selectedCard = JSON.parse(storedCard);
+        
+        // Check if user is the card owner
+        if (selectedCard.user_id === user.id) {
+          setUserRole('owner');
+        } else {
+          // Check user's member role
+          const { data: memberData } = await supabase
+            .from('card_members')
+            .select('role')
+            .eq('credit_card_id', selectedCard.id)
+            .eq('user_id', user.id)
+            .single();
+          
+          if (memberData) {
+            setUserRole(memberData.role);
+          }
+        }
+      }
+    };
+
+    getCurrentUser();
+  }, []);
 
   const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
     try {
@@ -106,6 +139,34 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     setCategory('personal');
   };
 
+  const canAddTransactionForPerson = (personId: string) => {
+    // Card owners can add transactions for anyone
+    if (userRole === 'owner') return true;
+    
+    // Members can only add transactions for themselves
+    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    return currentUserPerson?.id === personId;
+  };
+
+  const canDeleteTransaction = (transaction: Transaction) => {
+    // Card owners can delete any transaction
+    if (userRole === 'owner') return true;
+    
+    // Members can only delete their own transactions
+    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    return transaction.spentBy === currentUserPerson?.id;
+  };
+
+  const getAvailablePeople = () => {
+    if (userRole === 'owner') {
+      return people; // Owners can select anyone
+    }
+    
+    // Members can only select themselves
+    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    return currentUserPerson ? [currentUserPerson] : [];
+  };
+
   const handleAddExpense = async () => {
     // For common expenses, we don't need spentBy as it will be split among all people
     if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
@@ -114,6 +175,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description: category === 'common' 
           ? "Please fill in amount, description, and date to add a common expense."
           : "Please fill in all fields to add an expense.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check permissions for personal expenses
+    if (category === 'personal' && !canAddTransactionForPerson(spentBy)) {
+      toast({
+        title: "Permission denied",
+        description: "You can only add transactions for yourself.",
         variant: "destructive"
       });
       return;
@@ -164,6 +235,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
+    // Check permissions
+    if (!canAddTransactionForPerson(spentBy)) {
+      toast({
+        title: "Permission denied",
+        description: "You can only add payments for yourself.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const transaction: Omit<Transaction, 'id'> = {
@@ -198,6 +279,18 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleDeleteTransaction = async (transactionId: string) => {
+    const transaction = transactions.find(t => t.id === transactionId);
+    if (!transaction) return;
+
+    if (!canDeleteTransaction(transaction)) {
+      toast({
+        title: "Permission denied",
+        description: "You can only delete your own transactions.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       // Delete from database first
       await deleteTransactionFromDB(transactionId);
@@ -236,8 +329,21 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
   };
 
+  const availablePeople = getAvailablePeople();
+
   return (
     <div className="space-y-6">
+      {/* Permission notice for non-owners */}
+      {userRole !== 'owner' && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-4">
+            <p className="text-sm text-amber-800">
+              <strong>Note:</strong> As a card member, you can only add transactions and payments for yourself.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs defaultValue="expense" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="expense" className="flex items-center gap-2">
@@ -298,7 +404,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <Select 
                     value={spentBy} 
                     onValueChange={setSpentBy}
-                    disabled={category === 'common'}
+                    disabled={category === 'common' || (userRole !== 'owner' && availablePeople.length <= 1)}
                   >
                     <SelectTrigger className={category === 'common' ? 'opacity-50 cursor-not-allowed' : ''}>
                       <SelectValue placeholder={
@@ -308,7 +414,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       } />
                     </SelectTrigger>
                     <SelectContent>
-                      {people.map((person) => (
+                      {availablePeople.map((person) => (
                         <SelectItem key={person.id} value={person.id}>
                           {person.name} {person.isCardOwner && '(Card Owner)'}
                         </SelectItem>
@@ -318,19 +424,25 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
-                  <Select value={category} onValueChange={(value: 'personal' | 'common') => {
-                    setCategory(value);
-                    // Clear spentBy when switching to common
-                    if (value === 'common') {
-                      setSpentBy('');
-                    }
-                  }}>
+                  <Select 
+                    value={category} 
+                    onValueChange={(value: 'personal' | 'common') => {
+                      setCategory(value);
+                      // Clear spentBy when switching to common
+                      if (value === 'common') {
+                        setSpentBy('');
+                      }
+                    }}
+                    disabled={userRole !== 'owner'} // Only owners can create common expenses
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="personal">Personal</SelectItem>
-                      <SelectItem value="common">Common (Split Equally)</SelectItem>
+                      {userRole === 'owner' && (
+                        <SelectItem value="common">Common (Split Equally)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -386,12 +498,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
               <div>
                 <label className="block text-sm font-medium mb-2">Paid by</label>
-                <Select value={spentBy} onValueChange={setSpentBy}>
+                <Select 
+                  value={spentBy} 
+                  onValueChange={setSpentBy}
+                  disabled={userRole !== 'owner' && availablePeople.length <= 1}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Who made this payment?" />
                   </SelectTrigger>
                   <SelectContent>
-                    {people.map((person) => (
+                    {availablePeople.map((person) => (
                       <SelectItem key={person.id} value={person.id}>
                         {person.name} {person.isCardOwner && '(Card Owner)'}
                       </SelectItem>
@@ -436,6 +552,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
+                      const canDelete = canDeleteTransaction(transaction);
+                      
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
                           <div className="flex-1">
@@ -454,13 +572,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-blue-600">₹{transaction.amount.toFixed(2)}</span>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteTransaction(transaction.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -476,6 +596,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
+                      const canDelete = canDeleteTransaction(transaction);
+                      
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
                           <div className="flex-1">
@@ -491,13 +613,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-green-600">₹{transaction.amount.toFixed(2)}</span>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteTransaction(transaction.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
