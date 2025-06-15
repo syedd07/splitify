@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,21 +77,30 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
-      // Check if user is already a member
-      const { data: existingMember } = await supabase
-        .from('card_members')
-        .select('*, profiles!inner(email)')
-        .eq('credit_card_id', cardId)
-        .eq('profiles.email', email.toLowerCase())
+      // Check if user is already a member by looking up their profile first
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.toLowerCase())
         .maybeSingle();
 
-      if (existingMember) {
-        toast({
-          title: "Already a member",
-          description: "This user is already a member of this card",
-          variant: "destructive",
-        });
-        return;
+      if (existingProfile) {
+        // Check if this user is already a member
+        const { data: existingMember } = await supabase
+          .from('card_members')
+          .select('*')
+          .eq('credit_card_id', cardId)
+          .eq('user_id', existingProfile.id)
+          .maybeSingle();
+
+        if (existingMember) {
+          toast({
+            title: "Already a member",
+            description: "This user is already a member of this card",
+            variant: "destructive",
+          });
+          return;
+        }
       }
 
       // Create the invitation in database first
@@ -104,36 +114,56 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      // Use Supabase's invite user by email functionality
-      // This uses the INVITE email template, not the signup template
-      const { error: inviteEmailError } = await supabase.auth.signUp({
-        email: email.toLowerCase(),
-        password: Math.random().toString(36), // Temporary password
-        options: {
-          emailRedirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
-          data: {
-            card_id: cardId,
-            card_name: cardName,
-            inviter_name: user.user_metadata?.full_name || user.email,
-            invitation: true
+      // Check if user already exists in auth system
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+
+      if (existingUser) {
+        // User exists, they just need to log in to see the shared card
+        toast({
+          title: "Invitation created",
+          description: `${email} has been invited to access ${cardName}. Since they already have an account, they can log in to see the shared card.`,
+        });
+      } else {
+        // Create new user with invitation context using admin API
+        const { error: signUpError } = await supabase.auth.admin.inviteUserByEmail(
+          email.toLowerCase(),
+          {
+            redirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
+            data: {
+              card_id: cardId,
+              card_name: cardName,
+              inviter_name: user.user_metadata?.full_name || user.email,
+              invitation: true
+            }
+          }
+        );
+
+        if (signUpError) {
+          console.error('Invitation error:', signUpError);
+          // Fallback to regular signup if admin invite fails
+          const { error: fallbackError } = await supabase.auth.signUp({
+            email: email.toLowerCase(),
+            password: Math.random().toString(36) + Math.random().toString(36), // Random password
+            options: {
+              emailRedirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
+              data: {
+                card_id: cardId,
+                card_name: cardName,
+                inviter_name: user.user_metadata?.full_name || user.email,
+                invitation: true
+              }
+            }
+          });
+
+          if (fallbackError && !fallbackError.message.includes('already registered')) {
+            throw fallbackError;
           }
         }
-      });
 
-      if (inviteEmailError) {
-        // Check if user already exists
-        if (inviteEmailError.message.includes('already registered')) {
-          // For existing users, we'll send a custom notification
-          // For now, just create the invitation record
-          toast({
-            title: "Invitation created",
-            description: `${email} has been invited to access ${cardName}. Since they already have an account, they can log in to see the shared card.`,
-          });
-        } else {
-          console.error('Invitation error:', inviteEmailError);
-          throw inviteEmailError;
-        }
-      } else {
         toast({
           title: "Invitation sent!",
           description: `Successfully invited ${email} to ${cardName}. They will receive an invitation email.`,
