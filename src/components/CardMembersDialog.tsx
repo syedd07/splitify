@@ -80,7 +80,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
   const fetchMembersAndInvitations = async () => {
     setLoading(true);
     try {
-      // Fetch members
+      // Fetch members with profiles using the correct join
       const { data: membersData, error: membersError } = await supabase
         .from('card_members')
         .select(`
@@ -88,7 +88,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
           user_id,
           role,
           created_at,
-          profiles!inner(email, full_name)
+          profiles!card_members_user_id_fkey(email, full_name)
         `)
         .eq('credit_card_id', cardId);
 
