@@ -44,20 +44,45 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         
         if (!isOwner) {
           setIsCardMember(true);
-          // Fetch the actual card owner's profile
-          const { data: ownerProfile } = await supabase
+          // Try to fetch the actual card owner's profile
+          const { data: ownerProfile, error } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', selectedCard.user_id)
-            .single();
+            .maybeSingle();
           
-          setCardOwner(ownerProfile);
+          if (error) {
+            console.error('Error fetching card owner profile:', error);
+          }
+
+          // If no profile found, create a fallback owner object
+          if (!ownerProfile) {
+            console.log('Card owner profile not found, using fallback data');
+            setCardOwner({
+              id: selectedCard.user_id,
+              full_name: 'Card Owner',
+              email: 'Card Owner'
+            });
+          } else {
+            setCardOwner(ownerProfile);
+          }
         } else {
           setIsCardMember(false);
           setCardOwner(userProfile);
         }
       } catch (error) {
-        console.error('Error fetching card owner:', error);
+        console.error('Error checking user role:', error);
+        // Set fallback data if there's an error
+        if (selectedCard.user_id !== currentUser.id) {
+          setIsCardMember(true);
+          setCardOwner({
+            id: selectedCard.user_id,
+            full_name: 'Card Owner',
+            email: 'Card Owner'
+          });
+        } else {
+          setCardOwner(userProfile);
+        }
       } finally {
         setLoading(false);
       }
@@ -82,7 +107,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         });
 
         // Get all card members (including invited users)
-        const { data: cardMembers } = await supabase
+        const { data: cardMembers, error } = await supabase
           .from('card_members')
           .select(`
             user_id,
@@ -90,6 +115,10 @@ const PersonManager: React.FC<PersonManagerProps> = ({
             profiles!inner(id, full_name, email)
           `)
           .eq('credit_card_id', selectedCard.id);
+
+        if (error) {
+          console.error('Error fetching card members:', error);
+        }
 
         // Add card members (excluding the owner if they're already added)
         if (cardMembers) {
@@ -149,6 +178,25 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         setPeople(peopleArray);
       } catch (error) {
         console.error('Error initializing people:', error);
+        // Set minimum people array with at least the card owner
+        const fallbackPeople: Person[] = [
+          {
+            id: cardOwner.id || 'card-owner',
+            name: cardOwner.full_name || cardOwner.email || 'Card Owner',
+            isCardOwner: true
+          }
+        ];
+
+        // Add current user if they're a member
+        if (isCardMember && userProfile) {
+          fallbackPeople.push({
+            id: userProfile.id,
+            name: userProfile.full_name || userProfile.email,
+            isCardOwner: false
+          });
+        }
+
+        setPeople(fallbackPeople);
       }
     };
 
@@ -264,7 +312,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
 
         {people.length < 2 && isCardMember && (
           <p className="text-sm text-muted-foreground text-center py-4">
-            Loading card members...
+            Waiting for more people to be added to this card...
           </p>
         )}
       </CardContent>
