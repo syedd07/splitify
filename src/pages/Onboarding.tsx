@@ -17,8 +17,8 @@ interface CreditCardData {
   card_type?: string;
   is_primary: boolean;
   bin_info?: any;
-  user_id?: string; // Added to track ownership
-  role?: string; // Added to track member role
+  user_id?: string;
+  role?: string;
 }
 
 const Onboarding = () => {
@@ -34,11 +34,16 @@ const Onboarding = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
+      console.log('Starting auth check...');
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) {
+        console.log('No session found, redirecting to auth');
         navigate('/auth');
         return;
       }
+      
+      console.log('Session found:', session.user.id);
       setUser(session.user);
       
       // Check if this is an invitation acceptance
@@ -46,10 +51,12 @@ const Onboarding = () => {
       const cardId = searchParams.get('cardId');
       
       if (isInvite && cardId) {
+        console.log('Processing invitation for card:', cardId);
         await handleInvitationAcceptance(cardId, session.user);
       }
       
-      await fetchCreditCards();
+      // Only fetch credit cards after we have the user
+      await fetchCreditCards(session.user);
       setLoading(false);
     };
 
@@ -60,6 +67,10 @@ const Onboarding = () => {
         navigate('/auth');
       } else {
         setUser(session.user);
+        // Fetch cards when auth state changes and we have a user
+        if (session.user) {
+          fetchCreditCards(session.user);
+        }
       }
     });
 
@@ -85,6 +96,8 @@ const Onboarding = () => {
       }
 
       if (invitation) {
+        console.log('Found invitation:', invitation.id);
+        
         // Update invitation status to accepted
         const { error: updateError } = await supabase
           .from('card_invitations')
@@ -100,6 +113,8 @@ const Onboarding = () => {
           return;
         }
 
+        console.log('Invitation status updated to accepted');
+
         // Add user as a member of the card
         const { error: memberError } = await supabase
           .from('card_members')
@@ -113,6 +128,8 @@ const Onboarding = () => {
           console.error('Error adding card member:', memberError);
           return;
         }
+
+        console.log('User added as card member');
 
         // Get card name for the toast
         const { data: cardData } = await supabase
@@ -128,6 +145,8 @@ const Onboarding = () => {
 
         // Clear the URL parameters
         navigate('/onboarding', { replace: true });
+      } else {
+        console.log('No pending invitation found for this user and card');
       }
     } catch (error) {
       console.error('Error processing invitation:', error);
@@ -139,16 +158,26 @@ const Onboarding = () => {
     }
   };
 
-  const fetchCreditCards = async () => {
+  const fetchCreditCards = async (currentUser?: any) => {
     try {
+      // Use the passed user or the state user, and ensure we have a valid user
+      const userToUse = currentUser || user;
+      if (!userToUse?.id) {
+        console.log('No user available for fetching credit cards');
+        return;
+      }
+
+      console.log('Fetching credit cards for user:', userToUse.id);
+
       // Fetch owned cards
       const { data: ownedCards, error: ownedError } = await supabase
         .from('credit_cards')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', userToUse.id)
         .order('created_at', { ascending: true });
 
       if (ownedError) throw ownedError;
+      console.log('Owned cards:', ownedCards);
 
       // Fetch shared cards through memberships
       const { data: memberCards, error: memberError } = await supabase
@@ -165,10 +194,11 @@ const Onboarding = () => {
             user_id
           )
         `)
-        .eq('user_id', user?.id)
+        .eq('user_id', userToUse.id)
         .neq('role', 'owner'); // Exclude owner roles (those are already in ownedCards)
 
       if (memberError) throw memberError;
+      console.log('Member cards:', memberCards);
 
       // Combine owned and shared cards
       const allCards: CreditCardData[] = [];
@@ -197,6 +227,7 @@ const Onboarding = () => {
         });
       }
 
+      console.log('All cards combined:', allCards);
       setCreditCards(allCards);
       
       if (allCards.length > 0 && !selectedCardId) {
@@ -366,7 +397,7 @@ const Onboarding = () => {
                 <CreditCardDisplay
                   key={card.id}
                   card={card}
-                  onUpdate={fetchCreditCards}
+                  onUpdate={() => fetchCreditCards()}
                   isSelected={selectedCardId === card.id}
                   onSelect={handleCardSelect}
                 />
