@@ -28,69 +28,125 @@ const Onboarding = () => {
   const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [processingInvitation, setProcessingInvitation] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
+    let isMounted = true;
+    
     const checkAuth = async () => {
       console.log('Starting auth check...');
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (!session) {
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          if (isMounted) {
+            navigate('/auth');
+          }
+          return;
+        }
+        
+        if (!session?.user) {
           console.log('No session found, redirecting to auth');
-          navigate('/auth');
+          if (isMounted) {
+            navigate('/auth');
+          }
           return;
         }
         
         console.log('Session found:', session.user.id);
-        setUser(session.user);
+        if (isMounted) {
+          setUser(session.user);
+        }
         
         // Check if this is an invitation acceptance
         const isInvite = searchParams.get('invite') === 'true';
         const cardId = searchParams.get('cardId');
         
-        if (isInvite && cardId) {
+        if (isInvite && cardId && isMounted) {
           console.log('Processing invitation for card:', cardId);
           setProcessingInvitation(true);
           await handleInvitationAcceptance(cardId, session.user);
-          setProcessingInvitation(false);
+          if (isMounted) {
+            setProcessingInvitation(false);
+          }
         }
         
         // Fetch credit cards after processing invitation
-        await fetchCreditCards(session.user);
+        if (isMounted) {
+          await fetchCreditCards(session.user);
+        }
       } catch (error) {
         console.error('Error in auth check:', error);
-        toast({
-          title: "Error",
-          description: "Failed to authenticate user",
-          variant: "destructive",
-        });
+        if (isMounted) {
+          setErrorMessage('Failed to authenticate user');
+          toast({
+            title: "Error",
+            description: "Failed to authenticate user",
+            variant: "destructive",
+          });
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
-        if (session.user) {
-          await fetchCreditCards(session.user);
+      console.log('Auth state change:', event, session?.user?.id);
+      
+      if (!session?.user) {
+        if (isMounted) {
+          navigate('/auth');
         }
+      } else if (isMounted) {
+        setUser(session.user);
+        await fetchCreditCards(session.user);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate, searchParams]);
 
   const handleInvitationAcceptance = async (cardId: string, currentUser: any) => {
     try {
       console.log('Processing invitation for card:', cardId, 'user:', currentUser.email);
+      
+      // Check if user already has a profile
+      const { data: existingProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Error checking profile:', profileError);
+      }
+
+      // If no profile exists, create one
+      if (!existingProfile) {
+        console.log('Creating profile for invited user');
+        const { error: createProfileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: currentUser.id,
+            email: currentUser.email,
+            full_name: currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || ''
+          });
+
+        if (createProfileError) {
+          console.error('Error creating profile:', createProfileError);
+        }
+      }
       
       // Find the pending invitation for this user and card
       const { data: invitation, error: inviteError } = await supabase
@@ -103,11 +159,6 @@ const Onboarding = () => {
 
       if (inviteError) {
         console.error('Error finding invitation:', inviteError);
-        toast({
-          title: "Error",
-          description: "Failed to process invitation",
-          variant: "destructive",
-        });
         return;
       }
 
@@ -177,7 +228,6 @@ const Onboarding = () => {
         navigate('/onboarding', { replace: true });
       } else {
         console.log('No pending invitation found for this user and card');
-        // Don't show error toast as user might already be a member
       }
     } catch (error) {
       console.error('Error processing invitation:', error);
@@ -213,25 +263,10 @@ const Onboarding = () => {
       
       console.log('Owned cards:', ownedCards || []);
 
-      // Fetch shared cards through memberships
+      // Fetch shared cards through memberships - using a simpler query structure
       const { data: membershipData, error: memberError } = await supabase
         .from('card_members')
-        .select(`
-          role,
-          credit_card_id,
-          credit_cards (
-            id,
-            card_name,
-            last_four_digits,
-            issuing_bank,
-            card_type,
-            bin_info,
-            user_id,
-            is_primary,
-            created_at,
-            updated_at
-          )
-        `)
+        .select('role, credit_card_id')
         .eq('user_id', userToUse.id);
 
       if (memberError) {
@@ -240,6 +275,32 @@ const Onboarding = () => {
       }
       
       console.log('Member cards data:', membershipData || []);
+
+      // Fetch the actual card details for memberships
+      let sharedCards: any[] = [];
+      if (membershipData && membershipData.length > 0) {
+        const cardIds = membershipData.map(m => m.credit_card_id);
+        
+        const { data: sharedCardDetails, error: sharedError } = await supabase
+          .from('credit_cards')
+          .select('*')
+          .in('id', cardIds);
+
+        if (sharedError) {
+          console.error('Error fetching shared card details:', sharedError);
+        } else {
+          // Combine card details with roles
+          sharedCards = sharedCardDetails?.map(card => {
+            const membership = membershipData.find(m => m.credit_card_id === card.id);
+            return {
+              ...card,
+              role: membership?.role || 'member'
+            };
+          }) || [];
+        }
+      }
+
+      console.log('Shared cards:', sharedCards);
 
       // Combine owned and shared cards
       const allCards: CreditCardData[] = [];
@@ -255,19 +316,17 @@ const Onboarding = () => {
         });
       }
 
-      // Add shared cards with their respective roles
-      if (membershipData && membershipData.length > 0) {
-        membershipData.forEach((membership: any) => {
-          if (membership.credit_cards) {
-            // Don't add cards we already own
-            const isAlreadyOwned = ownedCards?.some(owned => owned.id === membership.credit_cards.id);
-            if (!isAlreadyOwned) {
-              allCards.push({
-                ...membership.credit_cards,
-                is_primary: false,
-                role: membership.role
-              });
-            }
+      // Add shared cards (excluding ones we already own)
+      if (sharedCards && sharedCards.length > 0) {
+        sharedCards.forEach((card) => {
+          // Don't add cards we already own
+          const isAlreadyOwned = ownedCards?.some(owned => owned.id === card.id);
+          if (!isAlreadyOwned) {
+            allCards.push({
+              ...card,
+              is_primary: false,
+              role: card.role
+            });
           }
         });
       }
@@ -279,11 +338,16 @@ const Onboarding = () => {
       if (allCards.length > 0 && !selectedCardId) {
         setSelectedCardId(allCards[0].id);
       }
+
+      // Clear any error messages on successful fetch
+      setErrorMessage('');
     } catch (error: any) {
       console.error('Error fetching credit cards:', error);
+      const errorMsg = error.message || 'Failed to fetch credit cards';
+      setErrorMessage(errorMsg);
       toast({
         title: "Error",
-        description: "Failed to fetch credit cards",
+        description: errorMsg,
         variant: "destructive",
       });
     }
@@ -378,6 +442,9 @@ const Onboarding = () => {
           <p className="text-gray-600">
             {processingInvitation ? 'Processing invitation...' : 'Loading...'}
           </p>
+          {errorMessage && (
+            <p className="text-red-600 mt-2 text-sm">{errorMessage}</p>
+          )}
         </div>
       </div>
     );
@@ -417,6 +484,21 @@ const Onboarding = () => {
               <p className="text-muted-foreground">
                 Select a credit card to start splitting bills with ease
               </p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700">{errorMessage}</p>
+              <Button 
+                onClick={() => fetchCreditCards()} 
+                variant="outline" 
+                size="sm" 
+                className="mt-2"
+              >
+                Retry
+              </Button>
             </div>
           )}
 
@@ -523,6 +605,21 @@ const Onboarding = () => {
             <p className="text-lg text-muted-foreground">
               Let's set up your credit cards to start splitting bills seamlessly
             </p>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg max-w-4xl mx-auto">
+            <p className="text-red-700">{errorMessage}</p>
+            <Button 
+              onClick={() => fetchCreditCards()} 
+              variant="outline" 
+              size="sm" 
+              className="mt-2"
+            >
+              Retry
+            </Button>
           </div>
         )}
 
