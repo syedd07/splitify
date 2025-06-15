@@ -178,8 +178,10 @@ const Onboarding = () => {
           return;
         }
 
-        // Add user's email to shared_emails if not already present
-        const currentSharedEmails = cardData.shared_emails || [];
+        // Safely handle shared_emails as Json type
+        const currentSharedEmails = Array.isArray(cardData.shared_emails) 
+          ? cardData.shared_emails as string[]
+          : [];
         const userEmail = currentUser.email.toLowerCase();
         
         if (!currentSharedEmails.includes(userEmail)) {
@@ -250,9 +252,6 @@ const Onboarding = () => {
       console.log('Fetching credit cards for user:', userToUse.id, 'email:', userToUse.email);
 
       // Fetch all cards the user has access to (owned + shared via email)
-      // The RLS policy will automatically filter cards based on:
-      // 1. Cards owned by the user (user_id = auth.uid())
-      // 2. Cards where user's email is in shared_emails array
       const { data: allCards, error } = await supabase
         .from('credit_cards')
         .select('*')
@@ -268,10 +267,16 @@ const Onboarding = () => {
       // Transform cards and determine roles
       const cardsWithRoles: CreditCardData[] = (allCards || []).map((card, index) => {
         const isOwner = card.user_id === userToUse.id;
-        const isSharedViaEmail = !isOwner && card.shared_emails?.includes(userToUse.email?.toLowerCase());
+        
+        // Safely handle shared_emails as Json type
+        const sharedEmails = Array.isArray(card.shared_emails) 
+          ? card.shared_emails as string[]
+          : [];
+        const isSharedViaEmail = !isOwner && sharedEmails.includes(userToUse.email?.toLowerCase());
         
         return {
           ...card,
+          shared_emails: sharedEmails,
           is_primary: isOwner && index === 0, // Only first owned card is primary
           role: isOwner ? 'owner' : 'member'
         };

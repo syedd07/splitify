@@ -94,7 +94,10 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
-      const currentSharedEmails = cardData.shared_emails || [];
+      // Safely handle shared_emails as Json type
+      const currentSharedEmails = Array.isArray(cardData.shared_emails) 
+        ? cardData.shared_emails as string[]
+        : [];
 
       // Check if email is already shared
       if (currentSharedEmails.includes(inviteEmail)) {
