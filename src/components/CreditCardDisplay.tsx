@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -130,66 +131,58 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
     }
   };
 
-  const getBankColor = (bank?: string) => {
-    switch (bank?.toLowerCase()) {
-      case 'mastercard':
-        return 'bg-red-600/20 text-red-100 border-red-400/30';
-      case 'american express':
-      case 'amex':
-        return 'bg-green-600/20 text-green-100 border-green-400/30';
-      case 'rupay':
-        return 'bg-purple-600/20 text-purple-100 border-purple-400/30';
-      default:
-        return 'bg-gray-500/20 text-gray-100 border-gray-400/30';
-    }
-  };
-
   const getCardGradient = (cardType?: string) => {
     switch (cardType?.toLowerCase()) {
       case 'visa':
-        return 'from-blue-600 to-blue-800';
+        return 'bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800';
       case 'mastercard':
-        return 'from-red-600 to-orange-600';
+        return 'bg-gradient-to-br from-red-600 via-orange-600 to-red-700';
       case 'american express':
       case 'amex':
-        return 'from-green-600 to-teal-600';
+        return 'bg-gradient-to-br from-green-600 via-teal-600 to-green-700';
       case 'rupay':
-        return 'from-purple-600 to-pink-600';
+        return 'bg-gradient-to-br from-purple-600 via-pink-600 to-purple-700';
       default:
-        return 'from-gray-600 to-gray-800';
+        return 'bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900';
+    }
+  };
+
+  const getRoleBadgeColor = (role?: string) => {
+    switch (role) {
+      case 'owner':
+        return 'bg-yellow-500/90 text-yellow-50 border-yellow-400/50';
+      case 'member':
+        return 'bg-green-500/90 text-green-50 border-green-400/50';
+      default:
+        return 'bg-blue-500/90 text-blue-50 border-blue-400/50';
     }
   };
 
   return (
     <Card 
-      className={`relative overflow-hidden transition-all duration-200 cursor-pointer ${
+      className={`relative overflow-hidden transition-all duration-300 cursor-pointer transform hover:scale-105 ${
         isSelected 
-          ? 'ring-2 ring-blue-500 ring-offset-2 shadow-lg' 
-          : 'hover:shadow-md'
-      }`}
+          ? 'ring-4 ring-blue-500 ring-offset-4 shadow-2xl scale-105' 
+          : 'hover:shadow-xl shadow-lg'
+      } bg-white border-2 border-gray-100`}
       onClick={() => onSelect(card.id)}
     >
       <CardContent className="p-0">
         {/* Credit Card Visual */}
-        <div className={`p-6 text-white relative ${getCardGradient(card.issuing_bank)}`}>
-          <div className="flex justify-between items-start mb-4">
+        <div className={`p-6 text-white relative ${getCardGradient(card.issuing_bank)} shadow-inner`}>
+          {/* Selection indicator */}
+          {isSelected && (
+            <div className="absolute top-3 right-3 w-6 h-6 bg-white rounded-full flex items-center justify-center">
+              <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+            </div>
+          )}
+          
+          <div className="flex justify-between items-start mb-6">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-8 h-8" />
+              <CreditCard className="w-8 h-8 drop-shadow-sm" />
               {card.is_primary && (
-                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm font-medium">
                   Primary
-                </Badge>
-              )}
-              {isOwner && (
-                <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-100 border-yellow-400/30">
-                  <Crown className="w-3 h-3 mr-1" />
-                  Owner
-                </Badge>
-              )}
-              {isMember && (
-                <Badge variant="secondary" className="bg-green-500/20 text-green-100 border-green-400/30">
-                  <UserCheck className="w-3 h-3 mr-1" />
-                  Member
                 </Badge>
               )}
             </div>
@@ -197,11 +190,11 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
             {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                  <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 backdrop-blur-sm">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="bg-white border shadow-lg">
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
                     setShowEditForm(true);
@@ -231,7 +224,7 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                   />
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
-                    className="text-red-600"
+                    className="text-red-600 focus:text-red-600"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete();
@@ -252,16 +245,15 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded text-white placeholder-white/70"
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
                 placeholder="Card name"
                 autoFocus
               />
               <div className="flex gap-2">
                 <Button 
                   size="sm" 
-                  variant="secondary"
                   onClick={handleEdit}
-                  className="bg-white/20 text-white border-white/30 hover:bg-white/30"
+                  className="bg-white/20 text-white border-white/30 hover:bg-white/30 backdrop-blur-sm"
                 >
                   Save
                 </Button>
@@ -272,7 +264,7 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                     setShowEditForm(false);
                     setEditName(card.card_name);
                   }}
-                  className="text-white hover:bg-white/20"
+                  className="text-white hover:bg-white/20 backdrop-blur-sm"
                 >
                   Cancel
                 </Button>
@@ -280,27 +272,53 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
             </div>
           ) : (
             <>
-              <h3 className="text-xl font-bold mb-2">{card.card_name}</h3>
-              <div className="flex items-center justify-between">
-                <span className="text-sm opacity-90">
+              <h3 className="text-xl font-bold mb-4 drop-shadow-sm">{card.card_name}</h3>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-lg font-mono tracking-wider drop-shadow-sm">
                   •••• •••• •••• {card.last_four_digits}
                 </span>
-                <span className="text-xs opacity-75">
-                  {card.issuing_bank || 'Bank'}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm opacity-90 font-medium">
+                  {card.issuing_bank || card.card_type || 'Credit Card'}
                 </span>
+                <div className="flex items-center gap-2">
+                  {isOwner && (
+                    <Badge className={`${getRoleBadgeColor('owner')} backdrop-blur-sm font-medium`}>
+                      <Crown className="w-3 h-3 mr-1" />
+                      Owner
+                    </Badge>
+                  )}
+                  {isMember && (
+                    <Badge className={`${getRoleBadgeColor('member')} backdrop-blur-sm font-medium`}>
+                      <UserCheck className="w-3 h-3 mr-1" />
+                      Member
+                    </Badge>
+                  )}
+                </div>
               </div>
             </>
           )}
         </div>
 
-        {/* Card Type Badge */}
-        {card.card_type && (
-          <div className="px-6 py-3 bg-gray-50">
-            <Badge variant="outline" className={getBankColor(card.issuing_bank)}>
-              {card.card_type}
-            </Badge>
+        {/* Card Info Footer */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {card.card_type && (
+                <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
+                  {card.card_type.toUpperCase()}
+                </Badge>
+              )}
+            </div>
+            {isSelected && (
+              <div className="flex items-center gap-1 text-blue-600 font-medium text-sm">
+                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                Selected
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );
