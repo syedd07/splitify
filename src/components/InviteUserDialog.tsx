@@ -115,17 +115,16 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      // Generate proper invitation link
-      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodeURIComponent(email.toLowerCase())}`;
+      // Use your configured production URL for the redirect
+      const inviteUrl = `https://ccardly.netlify.app/auth?invite=${cardId}&email=${encodeURIComponent(email.toLowerCase())}`;
       
-      // Use Supabase's admin invite user function to send proper invitation email
-      const { error: emailError } = await supabase.auth.admin.inviteUserByEmail(email.toLowerCase(), {
-        redirectTo: inviteUrl,
-        data: {
-          invitation_type: 'card_invitation',
-          card_id: cardId,
-          card_name: cardName,
-          inviter_name: user.user_metadata?.full_name || user.email,
+      // Call your existing send-invitation edge function
+      const { error: emailError } = await supabase.functions.invoke('send-invitation', {
+        body: {
+          cardId: cardId,
+          cardName: cardName,
+          invitedEmail: email.toLowerCase(),
+          inviterName: user.user_metadata?.full_name || user.email,
         }
       });
 
@@ -137,7 +136,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           variant: "destructive",
         });
       } else {
-        console.log('Invitation email sent successfully via Supabase admin API');
+        console.log('Invitation email sent successfully via Edge Function');
         toast({
           title: "Invitation sent!",
           description: `Successfully sent invitation to ${email} for ${cardName}.`,
