@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -205,14 +206,14 @@ const Onboarding = () => {
         throw ownedError;
       }
       
-      console.log('Owned cards:', ownedCards);
+      console.log('Owned cards:', ownedCards || []);
 
-      // Fetch shared cards through memberships
-      const { data: memberCards, error: memberError } = await supabase
+      // Fetch shared cards through memberships with proper join
+      const { data: membershipData, error: memberError } = await supabase
         .from('card_members')
         .select(`
           role,
-          credit_cards (
+          credit_cards!inner (
             id,
             card_name,
             last_four_digits,
@@ -232,7 +233,7 @@ const Onboarding = () => {
         throw memberError;
       }
       
-      console.log('Member cards:', memberCards);
+      console.log('Member cards data:', membershipData || []);
 
       // Combine owned and shared cards
       const allCards: CreditCardData[] = [];
@@ -249,8 +250,8 @@ const Onboarding = () => {
       }
 
       // Add shared cards with their respective roles
-      if (memberCards && memberCards.length > 0) {
-        memberCards.forEach((membership: any) => {
+      if (membershipData && membershipData.length > 0) {
+        membershipData.forEach((membership: any) => {
           if (membership.credit_cards) {
             // Don't add cards we already own
             const isAlreadyOwned = ownedCards?.some(owned => owned.id === membership.credit_cards.id);
