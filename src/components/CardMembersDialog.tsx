@@ -80,21 +80,37 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
   const fetchMembersAndInvitations = async () => {
     setLoading(true);
     try {
-      // Fetch members with profiles using the correct join
+      // Step 1: Fetch all members for the card
       const { data: membersData, error: membersError } = await supabase
         .from('card_members')
-        .select(`
-          id,
-          user_id,
-          role,
-          created_at,
-          profiles!card_members_user_id_fkey(email, full_name)
-        `)
+        .select('id, user_id, role, created_at')
         .eq('credit_card_id', cardId);
 
       if (membersError) throw membersError;
 
-      // Fetch pending invitations
+      // Step 2: Fetch profiles for all member user_ids
+      const userIds = (membersData || []).map((m) => m.user_id);
+      let profilesMap: Record<string, { email: string; full_name: string | null }> = {};
+
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, email, full_name')
+          .in('id', userIds);
+        if (profilesError) throw profilesError;
+        profilesMap = (profilesData || []).reduce((acc, prof) => {
+          acc[prof.id] = { email: prof.email || "", full_name: prof.full_name };
+          return acc;
+        }, {} as Record<string, { email: string; full_name: string | null }>);
+      }
+
+      // Step 3: Merge members with profiles
+      const members: Member[] = (membersData || []).map((m) => ({
+        ...m,
+        profiles: profilesMap[m.user_id] || { email: "", full_name: null },
+      }));
+
+      // Invite logic stays the same
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('card_invitations')
         .select('*')
@@ -103,7 +119,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
 
       if (invitationsError) throw invitationsError;
 
-      setMembers(membersData || []);
+      setMembers(members);
       setInvitations(invitationsData || []);
     } catch (error: any) {
       console.error('Error fetching members:', error);
