@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,6 +49,25 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       }
 
       const selectedCard = JSON.parse(storedCard);
+
+      // Check if user has access to this card (owner or member)
+      const hasDirectAccess = selectedCard.user_id === user.id;
+      
+      let hasSharedAccess = false;
+      if (!hasDirectAccess) {
+        const { data: membership } = await supabase
+          .from('card_members')
+          .select('id')
+          .eq('credit_card_id', selectedCard.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        hasSharedAccess = !!membership;
+      }
+
+      if (!hasDirectAccess && !hasSharedAccess) {
+        throw new Error('You do not have access to this credit card');
+      }
 
       const dbTransaction = {
         user_id: user.id,

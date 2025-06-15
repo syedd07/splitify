@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,8 @@ interface CreditCardData {
   card_type?: string;
   is_primary: boolean;
   bin_info?: any;
+  user_id?: string; // Added to track ownership
+  role?: string; // Added to track member role
 }
 
 const Onboarding = () => {
@@ -138,24 +141,69 @@ const Onboarding = () => {
 
   const fetchCreditCards = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch owned cards
+      const { data: ownedCards, error: ownedError } = await supabase
         .from('credit_cards')
         .select('*')
+        .eq('user_id', user?.id)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (ownedError) throw ownedError;
+
+      // Fetch shared cards through memberships
+      const { data: memberCards, error: memberError } = await supabase
+        .from('card_members')
+        .select(`
+          role,
+          credit_cards (
+            id,
+            card_name,
+            last_four_digits,
+            issuing_bank,
+            card_type,
+            bin_info,
+            user_id
+          )
+        `)
+        .eq('user_id', user?.id)
+        .neq('role', 'owner'); // Exclude owner roles (those are already in ownedCards)
+
+      if (memberError) throw memberError;
+
+      // Combine owned and shared cards
+      const allCards: CreditCardData[] = [];
       
-      const updatedCards = (data || []).map((card, index) => ({
-        ...card,
-        is_primary: index === 0
-      }));
+      // Add owned cards
+      if (ownedCards) {
+        ownedCards.forEach((card, index) => {
+          allCards.push({
+            ...card,
+            is_primary: index === 0,
+            role: 'owner'
+          });
+        });
+      }
+
+      // Add shared cards
+      if (memberCards) {
+        memberCards.forEach((membership: any) => {
+          if (membership.credit_cards) {
+            allCards.push({
+              ...membership.credit_cards,
+              is_primary: false,
+              role: membership.role
+            });
+          }
+        });
+      }
+
+      setCreditCards(allCards);
       
-      setCreditCards(updatedCards);
-      
-      if (updatedCards.length > 0) {
-        setSelectedCardId(updatedCards[0].id);
+      if (allCards.length > 0 && !selectedCardId) {
+        setSelectedCardId(allCards[0].id);
       }
     } catch (error: any) {
+      console.error('Error fetching credit cards:', error);
       toast({
         title: "Error",
         description: "Failed to fetch credit cards",
@@ -293,7 +341,7 @@ const Onboarding = () => {
           {/* Cards Grid */}
           <div className="max-w-6xl mx-auto">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* Add New Card Button */}
+              {/* Add New Card Button (only for owned cards) */}
               <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
                 <CardContent className="p-6 flex flex-col items-center justify-center h-full min-h-[200px]">
                   <button
