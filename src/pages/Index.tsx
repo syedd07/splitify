@@ -14,10 +14,11 @@ import PersonManager from '@/components/PersonManager';
 import TransactionEntry from '@/components/TransactionEntry';
 import CalculationSummary from '@/components/CalculationSummary';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
-import { Transaction, Person } from '@/types/BillSplitter';
+import { Person } from '@/types/BillSplitter';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions';
 
 const Index = () => {
   // Get current date info first
@@ -33,7 +34,6 @@ const Index = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>(months[currentMonth]);
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [people, setPeople] = useState<Person[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -41,9 +41,21 @@ const Index = () => {
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [showCardSelector, setShowCardSelector] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Use the real-time transactions hook
+  const { 
+    transactions, 
+    loading: loadingTransactions, 
+    addTransaction, 
+    deleteTransaction 
+  } = useRealtimeTransactions({
+    selectedCard,
+    selectedMonth,
+    selectedYear,
+    user
+  });
 
   // Filter months - only show past months and current month
   const availableMonths = months.slice(0, currentMonth + 1);
@@ -60,19 +72,11 @@ const Index = () => {
           setSelectedCard(JSON.parse(storedCard));
         }
 
-        // Check if we should load existing transactions
-        const hasExistingTransactions = localStorage.getItem('hasExistingTransactions');
-        
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           setUser(session?.user || null);
           if (session?.user) {
             await fetchUserProfile(session.user.id);
             await fetchUserCards(session.user.id);
-            
-            // Load existing data if conditions are met
-            if (hasExistingTransactions && storedCard && selectedMonth && selectedYear) {
-              await loadExistingData(JSON.parse(storedCard));
-            }
           } else {
             setUserProfile(null);
             setAvailableCards([]);
@@ -86,11 +90,6 @@ const Index = () => {
         if (session?.user) {
           await fetchUserProfile(session.user.id);
           await fetchUserCards(session.user.id);
-          
-          // Load existing data if conditions are met
-          if (hasExistingTransactions && storedCard && selectedMonth && selectedYear) {
-            await loadExistingData(JSON.parse(storedCard));
-          }
         }
         setLoading(false);
 
@@ -102,117 +101,13 @@ const Index = () => {
     };
 
     initializeApp();
-  }, [selectedMonth, selectedYear]);
+  }, []);
 
   // Clear transactions when month/year changes
   useEffect(() => {
-    setTransactions([]);
     setPeople([]);
     setCurrentStep('setup');
-    localStorage.removeItem('hasExistingTransactions');
   }, [selectedMonth, selectedYear]);
-
-  const loadExistingData = async (card: any) => {
-    if (loadingTransactions || !selectedMonth || !selectedYear) {
-      return;
-    }
-
-    try {
-      setLoadingTransactions(true);
-      
-      // Fetch existing transactions for the selected card and current month/year
-      const { data: dbTransactions, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('credit_card_id', card.id)
-        .eq('month', selectedMonth)
-        .eq('year', selectedYear);
-
-      if (error) {
-        console.error('Error loading existing transactions:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load previous transactions",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (dbTransactions && dbTransactions.length > 0) {
-        // Extract unique people from transactions
-        const uniquePeople = new Set<string>();
-        dbTransactions.forEach(transaction => {
-          if (transaction.spent_by_person_name && transaction.spent_by_person_name !== 'common') {
-            uniquePeople.add(transaction.spent_by_person_name);
-          }
-        });
-
-        // Create people array with card owner as first person
-        const peopleArray: Person[] = [];
-        
-        // Add card owner first (from user profile)
-        if (userProfile?.full_name) {
-          peopleArray.push({
-            id: userProfile.full_name,
-            name: userProfile.full_name,
-            isCardOwner: true
-          });
-        }
-
-        // Add other people from transactions
-        uniquePeople.forEach(personName => {
-          if (personName !== userProfile?.full_name) {
-            peopleArray.push({
-              id: personName,
-              name: personName,
-              isCardOwner: false
-            });
-          }
-        });
-
-        // Convert database transactions to local format
-        const localTransactions: Transaction[] = dbTransactions.map(dbTransaction => ({
-          id: dbTransaction.id,
-          amount: parseFloat(dbTransaction.amount.toString()),
-          description: dbTransaction.description,
-          date: dbTransaction.transaction_date.split('-')[2], // Extract day from YYYY-MM-DD
-          type: dbTransaction.transaction_type as 'expense' | 'payment',
-          category: dbTransaction.category as 'personal' | 'common',
-          spentBy: dbTransaction.spent_by_person_name,
-          isCommonSplit: dbTransaction.is_common_split || false
-        }));
-
-        // Set the loaded data
-        setPeople(peopleArray);
-        setTransactions(localTransactions);
-        setCurrentStep('transactions');
-        
-        // Clear the flag since we've loaded the data
-        localStorage.removeItem('hasExistingTransactions');
-        
-        toast({
-          title: "Previous data loaded",
-          description: `Found ${localTransactions.length} transactions and ${peopleArray.length} people for ${selectedMonth} ${selectedYear}`,
-        });
-      } else {
-        // Clear the flag since there's no data to load
-        localStorage.removeItem('hasExistingTransactions');
-        toast({
-          title: "No previous data",
-          description: "No previous transactions found for this month",
-        });
-      }
-    } catch (error) {
-      console.error('Error loading existing data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load previous transactions",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingTransactions(false);
-    }
-  };
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -261,7 +156,6 @@ const Index = () => {
     setUser(null);
     setUserProfile(null);
     setPeople([]);
-    setTransactions([]);
     setCurrentStep('setup');
     localStorage.removeItem('selectedCard');
     localStorage.removeItem('hasExistingTransactions');
@@ -273,27 +167,13 @@ const Index = () => {
     }
   };
 
-  const handleAddTransaction = (transaction: Transaction) => {
-    if (transaction.type === 'expense' && transaction.category === 'common') {
-      // For common expenses, create individual transactions for each person
-      const amountPerPerson = transaction.amount / people.length;
-      people.forEach(person => {
-        const commonTransaction: Transaction = {
-          ...transaction,
-          id: `${Date.now()}-${person.id}`,
-          amount: amountPerPerson,
-          spentBy: person.id,
-          isCommonSplit: true
-        };
-        setTransactions(prev => [...prev, commonTransaction]);
-      });
-    } else {
-      setTransactions(prev => [...prev, { ...transaction, id: transaction.id || Date.now().toString() }]);
-    }
+  // Dummy handlers for backward compatibility - real-time hook handles the actual operations
+  const handleAddTransaction = () => {
+    // This is handled by the real-time hook now
   };
 
-  const handleDeleteTransaction = (transactionId: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+  const handleDeleteTransaction = () => {
+    // This is handled by the real-time hook now
   };
 
   const handleProceedToSummary = () => {
@@ -409,9 +289,9 @@ const Index = () => {
                 <Card className="max-w-md mx-auto bg-white/80 backdrop-blur-sm">
                   <CardContent className="p-6">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <h3 className="text-lg font-semibold mb-2">Loading Previous Data</h3>
+                    <h3 className="text-lg font-semibold mb-2">Loading Transactions</h3>
                     <p className="text-muted-foreground">
-                      Fetching your existing transactions and people...
+                      Syncing your data in real-time...
                     </p>
                   </CardContent>
                 </Card>
@@ -576,8 +456,12 @@ const Index = () => {
                 
                 <Card className="max-w-4xl mx-auto">
                   <CardHeader>
-                    <CardTitle>
+                    <CardTitle className="flex items-center gap-2">
                       Managing expenses and payments for {selectedMonth} {selectedYear}
+                      <div className="ml-auto flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm text-muted-foreground">Real-time Sync</span>
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -591,6 +475,8 @@ const Index = () => {
                       selectedCard={selectedCard}
                       currentUser={user}
                       userProfile={userProfile}
+                      addTransaction={addTransaction}
+                      deleteTransaction={deleteTransaction}
                     />
                   </CardContent>
                 </Card>

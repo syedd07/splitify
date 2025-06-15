@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
-import { supabase } from '@/integrations/supabase/client';
 
 interface TransactionEntryProps {
   people: Person[];
@@ -20,18 +19,20 @@ interface TransactionEntryProps {
   selectedCard: any;
   currentUser: any;
   userProfile: any;
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<string>;
+  deleteTransaction: (transactionId: string) => Promise<void>;
 }
 
 const TransactionEntry: React.FC<TransactionEntryProps> = ({
   people,
-  onAddTransaction,
-  onDeleteTransaction,
   transactions,
   month,
   year,
   selectedCard,
   currentUser,
-  userProfile
+  userProfile,
+  addTransaction,
+  deleteTransaction
 }) => {
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
@@ -71,51 +72,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     const currentDay = currentDate.getDate().toString();
     setDate(currentDay);
   }, []);
-
-  const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
-    try {
-      // Simplified - no need to re-check user access since we already know it
-      const dbTransaction = {
-        user_id: currentUser.id,
-        credit_card_id: selectedCard.id,
-        amount: transaction.amount,
-        description: transaction.description,
-        transaction_date: `${year}-${String(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month) + 1).padStart(2, '0')}-${String(transaction.date).padStart(2, '0')}`,
-        transaction_type: transaction.type,
-        category: transaction.category,
-        spent_by_person_name: transaction.spentBy,
-        month: month,
-        year: year,
-        is_common_split: transaction.isCommonSplit || false
-      };
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(dbTransaction)
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      return data.id;
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      throw error;
-    }
-  };
-
-  const deleteTransactionFromDB = async (transactionId: string) => {
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', transactionId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting transaction:', error);
-      throw error;
-    }
-  };
 
   const resetForm = () => {
     setAmount('');
@@ -176,11 +132,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         spentBy: category === 'common' ? 'common' : spentBy
       };
 
-      // Save to database and get ID
-      const dbTransactionId = await saveTransactionToDB(transaction);
-      
-      // Add to local state immediately for fast UI update
-      onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
+      // Save to database - real-time sync will handle UI updates
+      await addTransaction(transaction);
       
       resetForm();
       toast({
@@ -231,11 +184,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         spentBy
       };
 
-      // Save to database and get ID
-      const dbTransactionId = await saveTransactionToDB(transaction);
-      
-      // Add to local state immediately for fast UI update
-      onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
+      // Save to database - real-time sync will handle UI updates
+      await addTransaction(transaction);
       
       resetForm();
       toast({
@@ -267,11 +217,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
 
     try {
-      // Delete from local state first for immediate UI update
-      onDeleteTransaction(transactionId);
-      
-      // Then delete from database
-      await deleteTransactionFromDB(transactionId);
+      // Delete from database - real-time sync will handle UI updates
+      await deleteTransaction(transactionId);
       
       toast({
         title: "Transaction Deleted",
@@ -283,8 +230,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description: "Failed to delete transaction. Please try again.",
         variant: "destructive"
       });
-      // Revert the local state change if database delete failed
-      // This would require refetching transactions, but for simplicity we'll just show the error
     }
   };
 
@@ -516,6 +461,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
               Transaction History
+              <div className="ml-auto flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-muted-foreground">Live</span>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
