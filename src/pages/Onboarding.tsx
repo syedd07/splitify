@@ -30,6 +30,7 @@ const Onboarding = () => {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [processingInvitation, setProcessingInvitation] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [authInitialized, setAuthInitialized] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -37,9 +38,10 @@ const Onboarding = () => {
   useEffect(() => {
     let isMounted = true;
     
-    const checkAuth = async () => {
-      console.log('Starting auth check...');
+    const initializeAuth = async () => {
+      console.log('Initializing auth...');
       try {
+        // Get initial session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
@@ -61,27 +63,26 @@ const Onboarding = () => {
         console.log('Session found:', session.user.id);
         if (isMounted) {
           setUser(session.user);
-        }
-        
-        // Check if this is an invitation acceptance
-        const isInvite = searchParams.get('invite') === 'true';
-        const cardId = searchParams.get('cardId');
-        
-        if (isInvite && cardId && isMounted) {
-          console.log('Processing invitation for card:', cardId);
-          setProcessingInvitation(true);
-          await handleInvitationAcceptance(cardId, session.user);
-          if (isMounted) {
-            setProcessingInvitation(false);
+          setAuthInitialized(true);
+          
+          // Check if this is an invitation acceptance
+          const isInvite = searchParams.get('invite') === 'true';
+          const cardId = searchParams.get('cardId');
+          
+          if (isInvite && cardId) {
+            console.log('Processing invitation for card:', cardId);
+            setProcessingInvitation(true);
+            await handleInvitationAcceptance(cardId, session.user);
+            if (isMounted) {
+              setProcessingInvitation(false);
+            }
           }
-        }
-        
-        // Fetch credit cards after processing invitation
-        if (isMounted) {
+          
+          // Fetch credit cards
           await fetchCreditCards(session.user);
         }
       } catch (error) {
-        console.error('Error in auth check:', error);
+        console.error('Error in auth initialization:', error);
         if (isMounted) {
           setErrorMessage('Failed to authenticate user');
           toast({
@@ -97,8 +98,7 @@ const Onboarding = () => {
       }
     };
 
-    checkAuth();
-
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state change:', event, session?.user?.id);
       
@@ -106,17 +106,21 @@ const Onboarding = () => {
         if (isMounted) {
           navigate('/auth');
         }
-      } else if (isMounted) {
+      } else if (isMounted && authInitialized) {
+        // Only refetch if auth was already initialized (prevents double fetch)
         setUser(session.user);
         await fetchCreditCards(session.user);
       }
     });
 
+    // Initialize auth
+    initializeAuth();
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [navigate, searchParams]);
+  }, [navigate, searchParams]); // Remove authInitialized from deps to prevent loops
 
   const handleInvitationAcceptance = async (cardId: string, currentUser: any) => {
     try {
