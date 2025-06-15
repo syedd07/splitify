@@ -1,101 +1,111 @@
+
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { CreditCard, Mail, Lock, User, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CreditCard, Loader2, Mail, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  // Check for invitation parameters
+  const inviteCardId = searchParams.get('invite');
+  const inviteEmail = searchParams.get('email');
 
   useEffect(() => {
-    // Check for authentication state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, session);
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in, redirecting to onboarding');
-        navigate('/onboarding');
-      }
-      
-      if (event === 'TOKEN_REFRESHED' && session) {
-        console.log('Token refreshed, user authenticated');
-        navigate('/onboarding');
-      }
-    });
-
-    // Check for existing session on component mount
-    const checkSession = async () => {
+    const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        console.log('Existing session found, redirecting to onboarding');
         navigate('/onboarding');
       }
     };
 
-    checkSession();
+    checkAuth();
+
+    // Pre-fill email if coming from invitation
+    if (inviteEmail) {
+      setEmail(decodeURIComponent(inviteEmail));
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        // If this is an invitation acceptance, redirect with invitation context
+        if (inviteCardId) {
+          navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
+        } else {
+          navigate('/onboarding');
+        }
+      }
+    });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, inviteCardId, inviteEmail]);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const redirectUrl = inviteCardId 
+        ? `${window.location.origin}/onboarding?invite=true&cardId=${inviteCardId}`
+        : `${window.location.origin}/onboarding`;
 
-        if (error) throw error;
-      } else {
-        // For signup, use the explicit redirect URL
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: 'https://ccardly.netlify.app/onboarding',
-            data: {
-              full_name: fullName,
-            }
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName,
           }
-        });
+        }
+      });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        toast({
-          title: "Welcome to Splitify!",
-          description: "Please check your email to verify your account. Click the verification link to complete your signup.",
-        });
-      }
+      toast({
+        title: "Success!",
+        description: "Check your email for the confirmation link.",
+      });
     } catch (error: any) {
-      let errorMessage = error.message;
-      
-      // Provide more user-friendly error messages
-      if (error.message.includes('Invalid login credentials')) {
-        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-      } else if (error.message.includes('User already registered')) {
-        errorMessage = 'This email is already registered. Please sign in instead or use a different email.';
-      } else if (error.message.includes('Password should be at least')) {
-        errorMessage = 'Password should be at least 6 characters long.';
-      } else if (error.message.includes('Email not confirmed')) {
-        errorMessage = 'Please check your email and click the verification link to activate your account.';
-      }
-      
       toast({
         title: "Error",
-        description: errorMessage,
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      // Navigation will be handled by the auth state change listener
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
         variant: "destructive",
       });
     } finally {
@@ -105,114 +115,117 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
             <CreditCard className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                Splitify!
-              </h1>
-              <p className="text-sm text-muted-foreground font-medium">
-                Credit Ease Divide
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+              Credit Ease Divide
+            </h1>
+          </div>
+          {inviteCardId && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center gap-2 text-blue-700">
+                <UserPlus className="w-4 h-4" />
+                <span className="text-sm font-medium">You've been invited!</span>
+              </div>
+              <p className="text-sm text-blue-600 mt-1">
+                Sign up or log in to access the shared credit card.
               </p>
             </div>
-          </div>
-          <p className="text-muted-foreground">
-            {isLogin ? 'Welcome back!' : 'Join us today!'}
-          </p>
-        </div>
-
-        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">
-              {isLogin ? 'Sign In' : 'Create Account'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAuth} className="space-y-4">
-              {!isLogin && (
+          )}
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="signin" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="signin">
+              <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="fullName"
-                      type="text"
-                      placeholder="Enter your full name"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
                     required
+                    readOnly={!!inviteEmail}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10"
                     required
                   />
                 </div>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
-                disabled={loading}
-              >
-                {loading ? 'Loading...' : (isLogin ? 'Sign In' : 'Create Account')}
-              </Button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <button
-                type="button"
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="mt-4 text-center">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/')}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Button>
-        </div>
-      </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    'Sign In'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
+            
+            <TabsContent value="signup">
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    readOnly={!!inviteEmail}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    'Create Account'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 };

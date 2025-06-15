@@ -115,48 +115,34 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      if (existingProfile) {
-        // User exists, they just need to log in to see the shared card
+      // Send invitation email using edge function
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error: emailError } = await supabase.functions.invoke('send-invitation', {
+        body: {
+          cardId: cardId,
+          cardName: cardName,
+          invitedEmail: email.toLowerCase(),
+          inviterName: user.user_metadata?.full_name || user.email
+        },
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
+
+      if (emailError) {
+        console.error('Error sending invitation email:', emailError);
+        // Don't throw here - invitation was created, just email failed
         toast({
           title: "Invitation created",
-          description: `${email} has been invited to access ${cardName}. Since they already have an account, they can log in to see the shared card.`,
+          description: `Invitation created for ${email} but email delivery failed. They can still access the card by logging in.`,
+          variant: "destructive",
         });
       } else {
-        // For new users, use regular signup which will send a confirmation email
-        const redirectUrl = `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`;
-        console.log('Sending signup invitation with redirect URL:', redirectUrl);
-        
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: email.toLowerCase(),
-          password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + 'A1!', // Random secure password
-          options: {
-            emailRedirectTo: redirectUrl,
-            data: {
-              card_id: cardId,
-              card_name: cardName,
-              inviter_name: user.user_metadata?.full_name || user.email,
-              invitation: true
-            }
-          }
+        console.log('Invitation email sent successfully:', data);
+        toast({
+          title: "Invitation sent!",
+          description: `Successfully sent invitation to ${email} for ${cardName}.`,
         });
-
-        console.log('SignUp response:', { data: signUpData, error: signUpError });
-
-        if (signUpError) {
-          if (signUpError.message.includes('already registered')) {
-            toast({
-              title: "User already exists",
-              description: `${email} already has an account. They can log in to see the shared card.`,
-            });
-          } else {
-            throw signUpError;
-          }
-        } else {
-          toast({
-            title: "Invitation sent!",
-            description: `Successfully invited ${email} to ${cardName}. They will receive an email to confirm their account and access the card.`,
-          });
-        }
       }
 
       setEmail('');
@@ -207,7 +193,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
               onKeyPress={(e) => e.key === 'Enter' && handleInvite()}
             />
             <p className="text-sm text-muted-foreground">
-              The user will receive an invitation to access this credit card
+              The user will receive an invitation email to access this credit card
             </p>
           </div>
         </div>
