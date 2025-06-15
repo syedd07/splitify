@@ -57,13 +57,29 @@ const CardMembersManager = ({ cardId, cardName, isOwner }: CardMembersManagerPro
           id,
           user_id,
           role,
-          joined_at,
-          profiles!inner(full_name, email)
+          joined_at
         `)
         .eq('credit_card_id', cardId);
 
       if (error) throw error;
-      setMembers(data || []);
+
+      // Fetch profiles separately for each member
+      const membersWithProfiles = await Promise.all(
+        (data || []).map(async (member) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', member.user_id)
+            .single();
+
+          return {
+            ...member,
+            profiles: profile
+          };
+        })
+      );
+
+      setMembers(membersWithProfiles);
     } catch (error) {
       console.error('Error fetching members:', error);
     }
@@ -173,10 +189,10 @@ const CardMembersManager = ({ cardId, cardName, isOwner }: CardMembersManagerPro
                 </Avatar>
                 <div>
                   <p className="font-medium">
-                    {member.profiles?.full_name || member.profiles?.email}
+                    {member.profiles?.full_name || member.profiles?.email || 'Unknown User'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {member.profiles?.email}
+                    {member.profiles?.email || 'No email'}
                   </p>
                 </div>
               </div>

@@ -76,7 +76,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         throw new Error('User not authenticated');
       }
 
-      // Get selected card from localStorage
       const storedCard = localStorage.getItem('selectedCard');
       if (!storedCard) {
         throw new Error('No credit card selected');
@@ -144,7 +143,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     if (userRole === 'owner') return true;
     
     // Members can only add transactions for themselves
-    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    const currentUserPerson = people.find(p => p.id === currentUser?.id || 
+      (p.name && currentUser?.user_metadata?.full_name === p.name) ||
+      (p.name && currentUser?.email && p.name.includes(currentUser.email)));
     return currentUserPerson?.id === personId;
   };
 
@@ -153,7 +154,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     if (userRole === 'owner') return true;
     
     // Members can only delete their own transactions
-    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    const currentUserPerson = people.find(p => p.id === currentUser?.id || 
+      (p.name && currentUser?.user_metadata?.full_name === p.name) ||
+      (p.name && currentUser?.email && p.name.includes(currentUser.email)));
     return transaction.spentBy === currentUserPerson?.id;
   };
 
@@ -163,12 +166,13 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
     
     // Members can only select themselves
-    const currentUserPerson = people.find(p => p.email === currentUser?.email);
+    const currentUserPerson = people.find(p => p.id === currentUser?.id || 
+      (p.name && currentUser?.user_metadata?.full_name === p.name) ||
+      (p.name && currentUser?.email && p.name.includes(currentUser.email)));
     return currentUserPerson ? [currentUserPerson] : [];
   };
 
   const handleAddExpense = async () => {
-    // For common expenses, we don't need spentBy as it will be split among all people
     if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
       toast({
         title: "Missing Information",
@@ -180,7 +184,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    // Check permissions for personal expenses
     if (category === 'personal' && !canAddTransactionForPerson(spentBy)) {
       toast({
         title: "Permission denied",
@@ -198,13 +201,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         date,
         type: 'expense',
         category,
-        spentBy: category === 'common' ? 'common' : spentBy // Use 'common' as placeholder for common expenses
+        spentBy: category === 'common' ? 'common' : spentBy
       };
 
-      // Save to database first
       const dbTransactionId = await saveTransactionToDB(transaction);
-      
-      // Add to local state with database ID
       onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
       
       resetForm();
@@ -235,7 +235,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    // Check permissions
     if (!canAddTransactionForPerson(spentBy)) {
       toast({
         title: "Permission denied",
@@ -252,14 +251,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description,
         date,
         type: 'payment',
-        category: 'personal', // Payments are always personal
+        category: 'personal',
         spentBy
       };
 
-      // Save to database first
       const dbTransactionId = await saveTransactionToDB(transaction);
-      
-      // Add to local state with database ID
       onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
       
       resetForm();
@@ -292,10 +288,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
 
     try {
-      // Delete from database first
       await deleteTransactionFromDB(transactionId);
-      
-      // Remove from local state
       onDeleteTransaction(transactionId);
       
       toast({
@@ -311,17 +304,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
   };
 
-  // Sort transactions by date in descending order (latest first)
   const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = parseInt(a.date);
     const dateB = parseInt(b.date);
-    return dateB - dateA; // Descending order (latest dates first)
+    return dateB - dateA;
   });
 
   const expenseTransactions = sortedTransactions.filter(t => t.type === 'expense');
   const paymentTransactions = sortedTransactions.filter(t => t.type === 'payment');
 
-  // Get days in month for date selection
   const getDaysInMonth = () => {
     const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June',
                        'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
@@ -428,12 +419,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                     value={category} 
                     onValueChange={(value: 'personal' | 'common') => {
                       setCategory(value);
-                      // Clear spentBy when switching to common
                       if (value === 'common') {
                         setSpentBy('');
                       }
                     }}
-                    disabled={userRole !== 'owner'} // Only owners can create common expenses
+                    disabled={userRole !== 'owner'}
                   >
                     <SelectTrigger>
                       <SelectValue />
