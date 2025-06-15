@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,31 +35,41 @@ const Onboarding = () => {
   useEffect(() => {
     const checkAuth = async () => {
       console.log('Starting auth check...');
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        console.log('No session found, redirecting to auth');
-        navigate('/auth');
-        return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          console.log('No session found, redirecting to auth');
+          navigate('/auth');
+          return;
+        }
+        
+        console.log('Session found:', session.user.id);
+        setUser(session.user);
+        
+        // Check if this is an invitation acceptance
+        const isInvite = searchParams.get('invite') === 'true';
+        const cardId = searchParams.get('cardId');
+        
+        if (isInvite && cardId) {
+          console.log('Processing invitation for card:', cardId);
+          setProcessingInvitation(true);
+          await handleInvitationAcceptance(cardId, session.user);
+          setProcessingInvitation(false);
+        }
+        
+        // Fetch credit cards after processing invitation
+        await fetchCreditCards(session.user);
+      } catch (error) {
+        console.error('Error in auth check:', error);
+        toast({
+          title: "Error",
+          description: "Failed to authenticate user",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
       }
-      
-      console.log('Session found:', session.user.id);
-      setUser(session.user);
-      
-      // Check if this is an invitation acceptance
-      const isInvite = searchParams.get('invite') === 'true';
-      const cardId = searchParams.get('cardId');
-      
-      if (isInvite && cardId) {
-        console.log('Processing invitation for card:', cardId);
-        setProcessingInvitation(true);
-        await handleInvitationAcceptance(cardId, session.user);
-        setProcessingInvitation(false);
-      }
-      
-      // Fetch credit cards after processing invitation
-      await fetchCreditCards(session.user);
-      setLoading(false);
     };
 
     checkAuth();
@@ -168,11 +177,7 @@ const Onboarding = () => {
         navigate('/onboarding', { replace: true });
       } else {
         console.log('No pending invitation found for this user and card');
-        toast({
-          title: "No invitation found",
-          description: "This invitation may have already been accepted or expired",
-          variant: "destructive",
-        });
+        // Don't show error toast as user might already be a member
       }
     } catch (error) {
       console.error('Error processing invitation:', error);
@@ -208,12 +213,13 @@ const Onboarding = () => {
       
       console.log('Owned cards:', ownedCards || []);
 
-      // Fetch shared cards through memberships with proper join
+      // Fetch shared cards through memberships
       const { data: membershipData, error: memberError } = await supabase
         .from('card_members')
         .select(`
           role,
-          credit_cards!inner (
+          credit_card_id,
+          credit_cards (
             id,
             card_name,
             last_four_digits,

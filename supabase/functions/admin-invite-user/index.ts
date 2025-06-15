@@ -120,7 +120,50 @@ const handler = async (req: Request): Promise<Response> => {
     // Generate invitation URL
     const inviteUrl = `https://ccardly.netlify.app/auth?invite=${cardId}&email=${encodeURIComponent(invitedEmail.toLowerCase())}`;
 
-    // Use admin client to send invitation email with proper redirect
+    // Check if user already exists in auth.users
+    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(invitedEmail.toLowerCase());
+    
+    if (existingUser.user) {
+      console.log('User already exists, adding as member directly');
+      
+      // Add user as member directly since they already have an account
+      const { error: memberError } = await supabaseAdmin
+        .from('card_members')
+        .insert({
+          credit_card_id: cardId,
+          user_id: existingUser.user.id,
+          role: 'member'
+        });
+
+      if (memberError) {
+        console.error('Error adding existing user as member:', memberError);
+        throw memberError;
+      }
+
+      // Update invitation status
+      await supabaseAdmin
+        .from('card_invitations')
+        .update({ 
+          status: 'accepted',
+          invited_user_id: existingUser.user.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('credit_card_id', cardId)
+        .eq('invited_email', invitedEmail.toLowerCase());
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'User added to card successfully' 
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    // User doesn't exist, create invitation with proper metadata
     const { error: emailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       invitedEmail.toLowerCase(), 
       {
@@ -130,13 +173,29 @@ const handler = async (req: Request): Promise<Response> => {
           card_id: cardId,
           card_name: cardName,
           inviter_name: inviterName,
-          custom_invite_url: inviteUrl,
+          invited_email: invitedEmail.toLowerCase(),
         }
       }
     );
 
     if (emailError) {
       console.error('Error sending invitation email:', emailError);
+      
+      // If the error is that user already exists but we missed it above
+      if (emailError.message.includes('already been registered')) {
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'User already exists. Please ask them to log in and they will see the shared card.',
+            info: 'User may need to log out and back in to see the shared card.'
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
