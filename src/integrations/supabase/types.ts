@@ -98,6 +98,7 @@ export type Database = {
           is_primary: boolean | null
           issuing_bank: string | null
           last_four_digits: string
+          shared_emails: Json | null
           updated_at: string
           user_id: string
         }
@@ -110,6 +111,7 @@ export type Database = {
           is_primary?: boolean | null
           issuing_bank?: string | null
           last_four_digits: string
+          shared_emails?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -122,6 +124,7 @@ export type Database = {
           is_primary?: boolean | null
           issuing_bank?: string | null
           last_four_digits?: string
+          shared_emails?: Json | null
           updated_at?: string
           user_id?: string
         }

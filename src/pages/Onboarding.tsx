@@ -18,6 +18,7 @@ interface CreditCardData {
   bin_info?: any;
   user_id?: string;
   role?: string;
+  shared_emails?: string[];
 }
 
 const Onboarding = () => {
@@ -165,35 +166,41 @@ const Onboarding = () => {
       if (invitation) {
         console.log('Found invitation:', invitation.id);
         
-        // Check if user is already a member of this card
-        const { data: existingMember } = await supabase
-          .from('card_members')
-          .select('*')
-          .eq('credit_card_id', cardId)
-          .eq('user_id', currentUser.id)
-          .maybeSingle();
+        // Get the card and add the user's email to shared_emails
+        const { data: cardData, error: cardError } = await supabase
+          .from('credit_cards')
+          .select('shared_emails, card_name')
+          .eq('id', cardId)
+          .single();
 
-        if (!existingMember) {
-          // Add user as a member of the card
-          const { error: memberError } = await supabase
-            .from('card_members')
-            .insert({
-              credit_card_id: cardId,
-              user_id: currentUser.id,
-              role: 'member'
-            });
+        if (cardError) {
+          console.error('Error fetching card:', cardError);
+          return;
+        }
 
-          if (memberError) {
-            console.error('Error adding card member:', memberError);
+        // Add user's email to shared_emails if not already present
+        const currentSharedEmails = cardData.shared_emails || [];
+        const userEmail = currentUser.email.toLowerCase();
+        
+        if (!currentSharedEmails.includes(userEmail)) {
+          const updatedSharedEmails = [...currentSharedEmails, userEmail];
+          
+          const { error: updateError } = await supabase
+            .from('credit_cards')
+            .update({ shared_emails: updatedSharedEmails })
+            .eq('id', cardId);
+
+          if (updateError) {
+            console.error('Error updating shared emails:', updateError);
             toast({
               title: "Error",
-              description: "Failed to add you as a card member",
+              description: "Failed to add you to the card",
               variant: "destructive",
             });
             return;
           }
 
-          console.log('User added as card member');
+          console.log('User email added to card shared_emails');
         }
 
         // Update invitation status to accepted
@@ -211,13 +218,6 @@ const Onboarding = () => {
         } else {
           console.log('Invitation status updated to accepted');
         }
-
-        // Get card name for the toast
-        const { data: cardData } = await supabase
-          .from('credit_cards')
-          .select('card_name')
-          .eq('id', cardId)
-          .single();
 
         toast({
           title: "Invitation accepted!",
@@ -247,96 +247,42 @@ const Onboarding = () => {
         return;
       }
 
-      console.log('Fetching credit cards for user:', userToUse.id);
+      console.log('Fetching credit cards for user:', userToUse.id, 'email:', userToUse.email);
 
-      // Fetch owned cards
-      const { data: ownedCards, error: ownedError } = await supabase
+      // Fetch all cards the user has access to (owned + shared via email)
+      // The RLS policy will automatically filter cards based on:
+      // 1. Cards owned by the user (user_id = auth.uid())
+      // 2. Cards where user's email is in shared_emails array
+      const { data: allCards, error } = await supabase
         .from('credit_cards')
         .select('*')
-        .eq('user_id', userToUse.id)
         .order('created_at', { ascending: true });
 
-      if (ownedError) {
-        console.error('Error fetching owned cards:', ownedError);
-        throw ownedError;
+      if (error) {
+        console.error('Error fetching credit cards:', error);
+        throw error;
       }
       
-      console.log('Owned cards:', ownedCards || []);
+      console.log('Fetched cards:', allCards || []);
 
-      // Fetch shared cards through memberships - using a simpler query structure
-      const { data: membershipData, error: memberError } = await supabase
-        .from('card_members')
-        .select('role, credit_card_id')
-        .eq('user_id', userToUse.id);
-
-      if (memberError) {
-        console.error('Error fetching member cards:', memberError);
-        throw memberError;
-      }
-      
-      console.log('Member cards data:', membershipData || []);
-
-      // Fetch the actual card details for memberships
-      let sharedCards: any[] = [];
-      if (membershipData && membershipData.length > 0) {
-        const cardIds = membershipData.map(m => m.credit_card_id);
+      // Transform cards and determine roles
+      const cardsWithRoles: CreditCardData[] = (allCards || []).map((card, index) => {
+        const isOwner = card.user_id === userToUse.id;
+        const isSharedViaEmail = !isOwner && card.shared_emails?.includes(userToUse.email?.toLowerCase());
         
-        const { data: sharedCardDetails, error: sharedError } = await supabase
-          .from('credit_cards')
-          .select('*')
-          .in('id', cardIds);
+        return {
+          ...card,
+          is_primary: isOwner && index === 0, // Only first owned card is primary
+          role: isOwner ? 'owner' : 'member'
+        };
+      });
 
-        if (sharedError) {
-          console.error('Error fetching shared card details:', sharedError);
-        } else {
-          // Combine card details with roles
-          sharedCards = sharedCardDetails?.map(card => {
-            const membership = membershipData.find(m => m.credit_card_id === card.id);
-            return {
-              ...card,
-              role: membership?.role || 'member'
-            };
-          }) || [];
-        }
-      }
-
-      console.log('Shared cards:', sharedCards);
-
-      // Combine owned and shared cards
-      const allCards: CreditCardData[] = [];
-      
-      // Add owned cards with owner role
-      if (ownedCards && ownedCards.length > 0) {
-        ownedCards.forEach((card, index) => {
-          allCards.push({
-            ...card,
-            is_primary: index === 0,
-            role: 'owner'
-          });
-        });
-      }
-
-      // Add shared cards (excluding ones we already own)
-      if (sharedCards && sharedCards.length > 0) {
-        sharedCards.forEach((card) => {
-          // Don't add cards we already own
-          const isAlreadyOwned = ownedCards?.some(owned => owned.id === card.id);
-          if (!isAlreadyOwned) {
-            allCards.push({
-              ...card,
-              is_primary: false,
-              role: card.role
-            });
-          }
-        });
-      }
-
-      console.log('All cards combined:', allCards);
-      setCreditCards(allCards);
+      console.log('Cards with roles:', cardsWithRoles);
+      setCreditCards(cardsWithRoles);
       
       // Set first card as selected if none selected and we have cards
-      if (allCards.length > 0 && !selectedCardId) {
-        setSelectedCardId(allCards[0].id);
+      if (cardsWithRoles.length > 0 && !selectedCardId) {
+        setSelectedCardId(cardsWithRoles[0].id);
       }
 
       // Clear any error messages on successful fetch

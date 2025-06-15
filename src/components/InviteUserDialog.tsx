@@ -1,24 +1,25 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { UserPlus, Loader2, Mail } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2, Send } from 'lucide-react';
 
 interface InviteUserDialogProps {
   cardId: string;
   cardName: string;
-  trigger?: React.ReactNode;
+  trigger: React.ReactNode;
 }
 
 const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
@@ -26,169 +27,178 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
   cardName,
   trigger
 }) => {
-  const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
-
-  const validateEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
 
   const handleInvite = async () => {
     if (!email.trim()) {
       toast({
-        title: "Email required",
+        title: "Error",
         description: "Please enter an email address",
         variant: "destructive",
       });
       return;
     }
 
-    if (!validateEmail(email)) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
       toast({
-        title: "Invalid email",
+        title: "Error",
         description: "Please enter a valid email address",
         variant: "destructive",
       });
       return;
     }
 
-    setLoading(true);
-
+    setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      console.log('Calling admin-invite-user edge function...');
-
-      // Call the admin edge function to handle the invitation
-      const { data, error } = await supabase.functions.invoke('admin-invite-user', {
-        body: {
-          cardId: cardId,
-          cardName: cardName,
-          invitedEmail: email.toLowerCase(),
-          inviterName: user.user_metadata?.full_name || user.email,
-        }
-      });
-
-      console.log('Function response:', { data, error });
-
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message || 'Failed to send invitation');
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error('Authentication required');
       }
 
-      if (data?.error) {
-        console.error('Invitation error:', data.error);
-        
-        if (data.error === 'User already invited') {
-          toast({
-            title: "Already invited",
-            description: "This user has already been invited to this card",
-            variant: "destructive",
-          });
-        } else if (data.error === 'User already a member') {
-          toast({
-            title: "Already a member",
-            description: "This user is already a member of this card",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: data.error,
-            variant: "destructive",
-          });
-        }
+      const inviteEmail = email.toLowerCase().trim();
+
+      // Check if user is trying to invite themselves
+      if (inviteEmail === user.email?.toLowerCase()) {
+        toast({
+          title: "Error",
+          description: "You cannot invite yourself",
+          variant: "destructive",
+        });
         return;
       }
 
-      if (data?.warning) {
-        console.log('Invitation created with warning:', data.warning);
-        toast({
-          title: "Invitation created",
-          description: data.warning,
-          variant: "destructive",
-        });
-      } else {
-        console.log('Invitation sent successfully via admin function');
-        toast({
-          title: "Invitation sent!",
-          description: `Successfully sent invitation to ${email} for ${cardName}.`,
-        });
+      // Get the card's current shared_emails
+      const { data: cardData, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('shared_emails, user_id')
+        .eq('id', cardId)
+        .single();
+
+      if (cardError) {
+        throw cardError;
       }
 
+      // Check if user owns this card
+      if (cardData.user_id !== user.id) {
+        toast({
+          title: "Error",
+          description: "Only card owners can send invitations",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const currentSharedEmails = cardData.shared_emails || [];
+
+      // Check if email is already shared
+      if (currentSharedEmails.includes(inviteEmail)) {
+        toast({
+          title: "Already shared",
+          description: "This email already has access to the card",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Add email to shared_emails
+      const updatedSharedEmails = [...currentSharedEmails, inviteEmail];
+      
+      const { error: updateError } = await supabase
+        .from('credit_cards')
+        .update({ shared_emails: updatedSharedEmails })
+        .eq('id', cardId);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Create invitation record
+      const { error: inviteError } = await supabase
+        .from('card_invitations')
+        .insert({
+          credit_card_id: cardId,
+          inviter_user_id: user.id,
+          invited_email: inviteEmail,
+          status: 'pending'
+        });
+
+      if (inviteError) {
+        console.error('Error creating invitation record:', inviteError);
+        // Don't fail the whole process if invitation record fails
+      }
+
+      toast({
+        title: "Invitation sent!",
+        description: `${inviteEmail} can now access ${cardName} when they log in`,
+      });
+
       setEmail('');
-      setOpen(false);
+      setIsOpen(false);
     } catch (error: any) {
-      console.error('Error sending invitation:', error);
+      console.error('Error inviting user:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to send invitation",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const defaultTrigger = (
-    <Button variant="outline" size="sm">
-      <UserPlus className="w-4 h-4 mr-2" />
-      Invite User
-    </Button>
-  );
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        {trigger || defaultTrigger}
+        {trigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="w-5 h-5 text-blue-600" />
-            Invite User to {cardName}
-          </DialogTitle>
+          <DialogTitle>Invite User</DialogTitle>
           <DialogDescription>
-            Send an invitation to share this credit card with another user
+            Invite someone to access "{cardName}". They'll be able to view and add transactions to this card.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email Address</Label>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email address</Label>
             <Input
               id="email"
               type="email"
-              placeholder="user@example.com"
+              placeholder="Enter email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleInvite()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isLoading) {
+                  handleInvite();
+                }
+              }}
             />
-            <p className="text-sm text-muted-foreground">
-              The user will receive an invitation email to access this credit card
-            </p>
           </div>
         </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleInvite} disabled={loading}>
-            {loading ? (
+          <Button onClick={handleInvite} disabled={isLoading}>
+            {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Sending...
               </>
             ) : (
               <>
-                <UserPlus className="w-4 h-4 mr-2" />
+                <Send className="w-4 h-4 mr-2" />
                 Send Invitation
               </>
             )}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
