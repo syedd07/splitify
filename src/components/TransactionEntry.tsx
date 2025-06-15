@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,9 @@ interface TransactionEntryProps {
   transactions: Transaction[];
   month: string;
   year: string;
+  selectedCard: any;
+  currentUser: any;
+  userProfile: any;
 }
 
 const TransactionEntry: React.FC<TransactionEntryProps> = ({
@@ -25,7 +28,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   onDeleteTransaction,
   transactions,
   month,
-  year
+  year,
+  selectedCard,
+  currentUser,
+  userProfile
 }) => {
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
@@ -34,6 +40,37 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [spentBy, setSpentBy] = useState('');
   const [category, setCategory] = useState<'personal' | 'common'>('personal');
   const [loading, setLoading] = useState(false);
+  const [isCardMember, setIsCardMember] = useState(false);
+  const [currentUserPerson, setCurrentUserPerson] = useState<Person | null>(null);
+
+  // Check if current user is card member and set default spentBy
+  useEffect(() => {
+    if (selectedCard && currentUser && userProfile) {
+      const isOwner = selectedCard.user_id === currentUser.id;
+      setIsCardMember(!isOwner);
+
+      // Find current user's person object
+      const userPerson = people.find(person => 
+        person.name === userProfile.full_name || 
+        person.name === userProfile.email ||
+        person.id === userProfile.id
+      );
+      
+      setCurrentUserPerson(userPerson || null);
+
+      // For card members, automatically set spentBy to themselves
+      if (!isOwner && userPerson) {
+        setSpentBy(userPerson.id);
+      }
+    }
+  }, [selectedCard, currentUser, userProfile, people]);
+
+  // Pre-select current date
+  useEffect(() => {
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate().toString();
+    setDate(currentDay);
+  }, []);
 
   const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
     try {
@@ -119,12 +156,31 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const resetForm = () => {
     setAmount('');
     setDescription('');
-    setDate('');
-    setSpentBy('');
+    // Keep current date selected
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate().toString();
+    setDate(currentDay);
+    
+    // For card members, keep spentBy set to themselves
+    if (isCardMember && currentUserPerson) {
+      setSpentBy(currentUserPerson.id);
+    } else if (!isCardMember) {
+      setSpentBy('');
+    }
     setCategory('personal');
   };
 
   const handleAddExpense = async () => {
+    // For card members, ensure they can only add expenses for themselves
+    if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
+      toast({
+        title: "Access Restricted",
+        description: "As a card member, you can only record your own expenses.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // For common expenses, we don't need spentBy as it will be split among all people
     if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
       toast({
@@ -132,6 +188,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description: category === 'common' 
           ? "Please fill in amount, description, and date to add a common expense."
           : "Please fill in all fields to add an expense.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Card members cannot create common expenses
+    if (isCardMember && category === 'common') {
+      toast({
+        title: "Access Restricted",
+        description: "As a card member, you can only record personal expenses.",
         variant: "destructive"
       });
       return;
@@ -145,7 +211,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         date,
         type: 'expense',
         category,
-        spentBy: category === 'common' ? 'common' : spentBy // Use 'common' as placeholder for common expenses
+        spentBy: category === 'common' ? 'common' : spentBy
       };
 
       // Save to database first
@@ -173,6 +239,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddPayment = async () => {
+    // For card members, ensure they can only add payments for themselves
+    if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
+      toast({
+        title: "Access Restricted",
+        description: "As a card member, you can only record your own payments.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!amount || !description || !date || !spentBy) {
       toast({
         title: "Missing Information",
@@ -216,6 +292,18 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleDeleteTransaction = async (transactionId: string) => {
+    const transaction = transactions.find(t => t.id === transactionId);
+    
+    // Card members can only delete their own transactions
+    if (isCardMember && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.id) {
+      toast({
+        title: "Access Restricted",
+        description: "You can only delete your own transactions.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       // Delete from database first
       await deleteTransactionFromDB(transactionId);
@@ -254,8 +342,25 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
   };
 
+  // Filter people for dropdowns based on user role
+  const getAvailablePeople = () => {
+    if (isCardMember && currentUserPerson) {
+      // Card members can only select themselves
+      return [currentUserPerson];
+    }
+    return people; // Card owners can select anyone
+  };
+
   return (
     <div className="space-y-6">
+      {isCardMember && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Note:</strong> As a card member, you can only record your own expenses and payments. You cannot create common expenses or record transactions for others.
+          </p>
+        </div>
+      )}
+
       <Tabs defaultValue="expense" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="expense" className="flex items-center gap-2">
@@ -316,17 +421,19 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <Select 
                     value={spentBy} 
                     onValueChange={setSpentBy}
-                    disabled={category === 'common'}
+                    disabled={category === 'common' || isCardMember}
                   >
-                    <SelectTrigger className={category === 'common' ? 'opacity-50 cursor-not-allowed' : ''}>
+                    <SelectTrigger className={category === 'common' || isCardMember ? 'opacity-50 cursor-not-allowed' : ''}>
                       <SelectValue placeholder={
                         category === 'common' 
                           ? "Will be split equally among all people" 
+                          : isCardMember 
+                          ? "You (Card Member)"
                           : "Who spent this?"
                       } />
                     </SelectTrigger>
                     <SelectContent>
-                      {people.map((person) => (
+                      {getAvailablePeople().map((person) => (
                         <SelectItem key={person.id} value={person.id}>
                           {person.name} {person.isCardOwner && '(Card Owner)'}
                         </SelectItem>
@@ -337,10 +444,22 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
                   <Select value={category} onValueChange={(value: 'personal' | 'common') => {
+                    // Card members cannot select common
+                    if (isCardMember && value === 'common') {
+                      toast({
+                        title: "Access Restricted",
+                        description: "Card members can only record personal expenses.",
+                        variant: "destructive"
+                      });
+                      return;
+                    }
+                    
                     setCategory(value);
                     // Clear spentBy when switching to common
                     if (value === 'common') {
                       setSpentBy('');
+                    } else if (isCardMember && currentUserPerson) {
+                      setSpentBy(currentUserPerson.id);
                     }
                   }}>
                     <SelectTrigger>
@@ -348,7 +467,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="personal">Personal</SelectItem>
-                      <SelectItem value="common">Common (Split Equally)</SelectItem>
+                      {!isCardMember && (
+                        <SelectItem value="common">Common (Split Equally)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -404,12 +525,12 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
               <div>
                 <label className="block text-sm font-medium mb-2">Paid by</label>
-                <Select value={spentBy} onValueChange={setSpentBy}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Who made this payment?" />
+                <Select value={spentBy} onValueChange={setSpentBy} disabled={isCardMember}>
+                  <SelectTrigger className={isCardMember ? 'opacity-50 cursor-not-allowed' : ''}>
+                    <SelectValue placeholder={isCardMember ? "You (Card Member)" : "Who made this payment?"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {people.map((person) => (
+                    {getAvailablePeople().map((person) => (
                       <SelectItem key={person.id} value={person.id}>
                         {person.name} {person.isCardOwner && '(Card Owner)'}
                       </SelectItem>
@@ -454,6 +575,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
+                      const canDelete = !isCardMember || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
                           <div className="flex-1">
@@ -472,13 +595,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-blue-600">₹{transaction.amount.toFixed(2)}</span>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteTransaction(transaction.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -494,6 +619,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
+                      const canDelete = !isCardMember || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
                           <div className="flex-1">
@@ -509,13 +636,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-green-600">₹{transaction.amount.toFixed(2)}</span>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteTransaction(transaction.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );

@@ -542,6 +542,8 @@ const Index = () => {
                   setPeople={setPeople}
                   cardOwnerName={userProfile?.full_name || user?.email || 'Card Owner'}
                   userProfile={userProfile}
+                  selectedCard={selectedCard}
+                  currentUser={user}
                 />
 
                 <div className="text-center">
@@ -586,6 +588,9 @@ const Index = () => {
                       transactions={transactions}
                       month={selectedMonth}
                       year={selectedYear}
+                      selectedCard={selectedCard}
+                      currentUser={user}
+                      userProfile={userProfile}
                     />
                   </CardContent>
                 </Card>
