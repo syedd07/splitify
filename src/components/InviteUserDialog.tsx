@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,6 +71,8 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           inviterName: user.user_metadata?.full_name || user.email,
         }
       });
+
+      console.log('Function response:', { data, error });
 
       if (error) {
         console.error('Edge function error:', error);

@@ -4,8 +4,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface InviteUserRequest {
@@ -16,20 +16,24 @@ interface InviteUserRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log('Starting admin invite user function...');
+
     // Create admin client with service role key
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', // This gives admin privileges
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
     // Verify the requesting user is authenticated
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('No authorization header');
       throw new Error('No authorization header');
     }
 
@@ -46,6 +50,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
+      console.error('User not authenticated:', authError);
       throw new Error('User not authenticated');
     }
 
@@ -53,7 +58,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Processing invitation request:', { cardId, cardName, invitedEmail, inviterName });
 
-    // Check if user is already invited or a member (using regular client for RLS)
+    // Check if user is already invited or a member
     const { data: existingInvite } = await supabase
       .from('card_invitations')
       .select('*')
@@ -98,7 +103,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    // Create the invitation in database (using regular client for RLS)
+    // Create the invitation in database
     const { error: inviteError } = await supabase
       .from('card_invitations')
       .insert({
