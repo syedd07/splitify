@@ -25,24 +25,15 @@ const InviteUserForm = ({ onClose, onInviteSent }: InviteUserFormProps) => {
     setLoading(true);
 
     try {
-      // Check if user is already registered
-      const { data: existingUser } = await supabase.auth.admin.getUserByEmail(email);
-      
-      if (existingUser.user) {
-        toast({
-          title: "User already exists",
-          description: "This email is already registered in the system.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
-      // Check if invitation already exists
+      // Check if invitation already exists in our tracking table
       const { data: existingInvitation } = await supabase
         .from('invitations')
         .select('*')
-        .eq('email', email)
+        .eq('email', email.trim().toLowerCase())
         .eq('status', 'pending')
         .single();
 
@@ -56,50 +47,54 @@ const InviteUserForm = ({ onClose, onInviteSent }: InviteUserFormProps) => {
         return;
       }
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      // Use Supabase's built-in invite method
+      const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+        email.trim().toLowerCase(),
+        {
+          redirectTo: `${window.location.origin}/auth`,
+          data: {
+            invited_by: user.user_metadata?.full_name || user.email || 'Someone',
+          }
+        }
+      );
 
-      // Create invitation record
-      const { error: inviteError } = await supabase
+      if (inviteError) throw inviteError;
+
+      // Create invitation record in our tracking table
+      const { error: trackingError } = await supabase
         .from('invitations')
         .insert({
           inviter_id: user.id,
           email: email.trim().toLowerCase(),
         });
 
-      if (inviteError) throw inviteError;
-
-      // Send invitation email via edge function
-      const { error: emailError } = await supabase.functions.invoke('send-invitation', {
-        body: {
-          email: email.trim().toLowerCase(),
-          inviterName: user.user_metadata?.full_name || user.email || 'Someone',
-        },
-      });
-
-      if (emailError) {
-        console.error('Email sending error:', emailError);
-        // Don't fail the whole process if email fails
-        toast({
-          title: "Invitation created",
-          description: "Invitation was created but email sending failed. Please contact the user directly.",
-        });
-      } else {
-        toast({
-          title: "Invitation sent!",
-          description: `An invitation has been sent to ${email}`,
-        });
+      if (trackingError) {
+        console.error('Tracking error:', trackingError);
+        // Don't fail the process if tracking fails
       }
+
+      toast({
+        title: "Invitation sent!",
+        description: `An invitation has been sent to ${email}`,
+      });
 
       setEmail('');
       onInviteSent?.();
       onClose?.();
     } catch (error: any) {
       console.error('Invitation error:', error);
+      let errorMessage = error.message || "Failed to send invitation";
+      
+      // Provide more user-friendly error messages
+      if (error.message?.includes('User already registered')) {
+        errorMessage = 'This email is already registered in the system.';
+      } else if (error.message?.includes('Invalid email')) {
+        errorMessage = 'Please enter a valid email address.';
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Failed to send invitation",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
