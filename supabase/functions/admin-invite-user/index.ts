@@ -120,17 +120,20 @@ const handler = async (req: Request): Promise<Response> => {
     // Generate invitation URL
     const inviteUrl = `https://ccardly.netlify.app/auth?invite=${cardId}&email=${encodeURIComponent(invitedEmail.toLowerCase())}`;
 
-    // Use admin client to send invitation email
-    const { error: emailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(invitedEmail.toLowerCase(), {
-      redirectTo: inviteUrl,
-      data: {
-        invitation_type: 'card_invitation',
-        card_id: cardId,
-        card_name: cardName,
-        inviter_name: inviterName,
-        custom_invite_url: inviteUrl,
+    // Use admin client to send invitation email with proper redirect
+    const { error: emailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      invitedEmail.toLowerCase(), 
+      {
+        redirectTo: inviteUrl,
+        data: {
+          invitation_type: 'card_invitation',
+          card_id: cardId,
+          card_name: cardName,
+          inviter_name: inviterName,
+          custom_invite_url: inviteUrl,
+        }
       }
-    });
+    );
 
     if (emailError) {
       console.error('Error sending invitation email:', emailError);

@@ -54,6 +54,16 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!fullName.trim()) {
+      toast({
+        title: "Full name required",
+        description: "Please enter your full name",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -61,24 +71,40 @@ const Auth = () => {
         ? `${window.location.origin}/onboarding?invite=true&cardId=${inviteCardId}`
         : `${window.location.origin}/onboarding`;
 
-      const { error } = await supabase.auth.signUp({
-        email,
+      console.log('Signing up user with:', { email, fullName, inviteCardId });
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
         password,
         options: {
           emailRedirectTo: redirectUrl,
           data: {
-            full_name: fullName,
+            full_name: fullName.trim(),
           }
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Signup error:', error);
+        throw error;
+      }
 
-      toast({
-        title: "Success!",
-        description: "Check your email for the confirmation link.",
-      });
+      console.log('Signup successful:', data);
+
+      // If user is immediately confirmed (no email confirmation required)
+      if (data.user && !data.user.email_confirmed_at) {
+        toast({
+          title: "Success!",
+          description: "Check your email for the confirmation link.",
+        });
+      } else if (data.user && data.user.email_confirmed_at) {
+        toast({
+          title: "Success!",
+          description: "Account created successfully.",
+        });
+      }
     } catch (error: any) {
+      console.error('Signup error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -94,15 +120,23 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
+      console.log('Attempting to sign in with:', email);
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Sign in error:', error);
+        throw error;
+      }
+
+      console.log('Sign in successful:', data);
 
       // Navigation will be handled by the auth state change listener
     } catch (error: any) {
+      console.error('Sign in error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -188,6 +222,7 @@ const Auth = () => {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     required
+                    placeholder="Enter your full name"
                   />
                 </div>
                 <div className="space-y-2">
@@ -209,6 +244,8 @@ const Auth = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    minLength={6}
+                    placeholder="Minimum 6 characters"
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
