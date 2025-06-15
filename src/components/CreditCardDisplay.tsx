@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Crown, Trash2, Edit, Loader2 } from 'lucide-react';
+import { CreditCard, Crown, Trash2, Edit, Loader2, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -26,6 +26,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import CardMembersDialog from './CardMembersDialog';
+import InviteUserDialog from './InviteUserDialog';
 
 interface CreditCardDisplayProps {
   card: {
@@ -190,6 +192,38 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
         </div>
 
         <div className="flex justify-end gap-2">
+          <CardMembersDialog
+            cardId={card.id}
+            cardName={card.card_name}
+            trigger={
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={loading}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Members
+              </Button>
+            }
+          />
+
+          <InviteUserDialog
+            cardId={card.id}
+            cardName={card.card_name}
+            trigger={
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={loading}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Invite
+              </Button>
+            }
+          />
+
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
               <Button 
