@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
@@ -26,6 +25,7 @@ const Onboarding = () => {
   const [loading, setLoading] = useState(true);
   const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -37,6 +37,15 @@ const Onboarding = () => {
         return;
       }
       setUser(session.user);
+      
+      // Check if this is an invitation acceptance
+      const isInvite = searchParams.get('invite') === 'true';
+      const cardId = searchParams.get('cardId');
+      
+      if (isInvite && cardId) {
+        await handleInvitationAcceptance(cardId, session.user);
+      }
+      
       await fetchCreditCards();
       setLoading(false);
     };
@@ -52,7 +61,80 @@ const Onboarding = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, searchParams]);
+
+  const handleInvitationAcceptance = async (cardId: string, user: any) => {
+    try {
+      console.log('Processing invitation for card:', cardId, 'user:', user.email);
+      
+      // Find the pending invitation for this user and card
+      const { data: invitation, error: inviteError } = await supabase
+        .from('card_invitations')
+        .select('*')
+        .eq('credit_card_id', cardId)
+        .eq('invited_email', user.email.toLowerCase())
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (inviteError) {
+        console.error('Error finding invitation:', inviteError);
+        return;
+      }
+
+      if (invitation) {
+        // Update invitation status to accepted
+        const { error: updateError } = await supabase
+          .from('card_invitations')
+          .update({ 
+            status: 'accepted',
+            invited_user_id: user.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', invitation.id);
+
+        if (updateError) {
+          console.error('Error updating invitation:', updateError);
+          return;
+        }
+
+        // Add user as a member of the card
+        const { error: memberError } = await supabase
+          .from('card_members')
+          .insert({
+            credit_card_id: cardId,
+            user_id: user.id,
+            role: 'member'
+          });
+
+        if (memberError) {
+          console.error('Error adding card member:', memberError);
+          return;
+        }
+
+        // Get card name for the toast
+        const { data: cardData } = await supabase
+          .from('credit_cards')
+          .select('card_name')
+          .eq('id', cardId)
+          .single();
+
+        toast({
+          title: "Invitation accepted!",
+          description: `You now have access to ${cardData?.card_name || 'the credit card'}`,
+        });
+
+        // Clear the URL parameters
+        navigate('/onboarding', { replace: true });
+      }
+    } catch (error) {
+      console.error('Error processing invitation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process invitation",
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchCreditCards = async () => {
     try {
