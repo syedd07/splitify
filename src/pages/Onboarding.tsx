@@ -71,16 +71,39 @@ const Onboarding = () => {
 
   const fetchCards = async () => {
     try {
-      // Fetch owned cards
+      console.log('Starting fetchCards...');
+      
+      // Get current user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Error getting current user:', userError);
+        throw userError;
+      }
+      
+      if (!currentUser) {
+        console.error('No current user found');
+        throw new Error('No authenticated user');
+      }
+      
+      console.log('Current user ID:', currentUser.id);
+
+      // Fetch owned cards with detailed logging
+      console.log('Fetching owned cards...');
       const { data: owned, error: ownedError } = await supabase
         .from('credit_cards')
         .select('*')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('user_id', currentUser.id)
         .order('created_at', { ascending: true });
 
-      if (ownedError) throw ownedError;
+      console.log('Owned cards query result:', { owned, ownedError });
 
-      // Fetch invited cards through card_members
+      if (ownedError) {
+        console.error('Error fetching owned cards:', ownedError);
+        throw ownedError;
+      }
+
+      // Fetch invited cards through card_members with detailed logging
+      console.log('Fetching invited cards...');
       const { data: invited, error: invitedError } = await supabase
         .from('card_members')
         .select(`
@@ -95,10 +118,15 @@ const Onboarding = () => {
             user_id
           )
         `)
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('user_id', currentUser.id)
         .neq('role', 'owner');
 
-      if (invitedError) throw invitedError;
+      console.log('Invited cards query result:', { invited, invitedError });
+
+      if (invitedError) {
+        console.error('Error fetching invited cards:', invitedError);
+        throw invitedError;
+      }
 
       const ownedCardsData = (owned || []).map((card, index) => ({
         ...card,
@@ -110,6 +138,8 @@ const Onboarding = () => {
         role: item.role
       }));
 
+      console.log('Final card data:', { ownedCardsData, invitedCardsData });
+
       setOwnedCards(ownedCardsData);
       setInvitedCards(invitedCardsData);
 
@@ -117,10 +147,13 @@ const Onboarding = () => {
       if (allCards.length > 0) {
         setSelectedCardId(allCards[0].id);
       }
+      
+      console.log('fetchCards completed successfully');
     } catch (error: any) {
+      console.error('Error in fetchCards:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch credit cards",
+        description: `Failed to fetch credit cards: ${error.message}`,
         variant: "destructive",
       });
     }
