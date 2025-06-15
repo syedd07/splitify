@@ -28,19 +28,23 @@ const PersonManager: React.FC<PersonManagerProps> = ({
   const [newPersonName, setNewPersonName] = useState('');
   const [cardOwner, setCardOwner] = useState<any>(null);
   const [isCardMember, setIsCardMember] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Check if current user is card owner or member
   useEffect(() => {
     const checkUserRole = async () => {
-      if (!selectedCard || !currentUser) return;
+      if (!selectedCard || !currentUser) {
+        setLoading(false);
+        return;
+      }
 
-      // Check if user is the actual card owner
-      const isOwner = selectedCard.user_id === currentUser.id;
-      
-      if (!isOwner) {
-        setIsCardMember(true);
-        // Fetch the actual card owner's profile
-        try {
+      try {
+        // Check if user is the actual card owner
+        const isOwner = selectedCard.user_id === currentUser.id;
+        
+        if (!isOwner) {
+          setIsCardMember(true);
+          // Fetch the actual card owner's profile
           const { data: ownerProfile } = await supabase
             .from('profiles')
             .select('*')
@@ -48,63 +52,108 @@ const PersonManager: React.FC<PersonManagerProps> = ({
             .single();
           
           setCardOwner(ownerProfile);
-        } catch (error) {
-          console.error('Error fetching card owner:', error);
+        } else {
+          setIsCardMember(false);
+          setCardOwner(userProfile);
         }
-      } else {
-        setIsCardMember(false);
-        setCardOwner(userProfile);
+      } catch (error) {
+        console.error('Error fetching card owner:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
     checkUserRole();
   }, [selectedCard, currentUser, userProfile]);
 
-  // Initialize people from card's shared emails
+  // Initialize people from card's shared emails and members
   useEffect(() => {
-    if (selectedCard && cardOwner) {
-      const sharedEmails = Array.isArray(selectedCard.shared_emails) 
-        ? selectedCard.shared_emails 
-        : [];
+    const initializePeople = async () => {
+      if (!selectedCard || !cardOwner || loading) return;
 
-      const peopleArray: Person[] = [];
-      
-      // Add card owner first
-      peopleArray.push({
-        id: cardOwner.id || 'card-owner',
-        name: cardOwner.full_name || cardOwner.email || 'Card Owner',
-        isCardOwner: true
-      });
-
-      // Add shared email users (excluding the owner's email)
-      sharedEmails.forEach((email: string, index: number) => {
-        if (email !== cardOwner.email) {
-          peopleArray.push({
-            id: `shared-${index}`,
-            name: email,
-            isCardOwner: false
-          });
-        }
-      });
-
-      // Add current user if they're not the owner and not already in the list
-      if (isCardMember && userProfile) {
-        const currentUserExists = peopleArray.some(person => 
-          person.name === userProfile.full_name || person.name === userProfile.email
-        );
+      try {
+        const peopleArray: Person[] = [];
         
-        if (!currentUserExists) {
-          peopleArray.push({
-            id: userProfile.id,
-            name: userProfile.full_name || userProfile.email,
-            isCardOwner: false
+        // Add card owner first
+        peopleArray.push({
+          id: cardOwner.id || 'card-owner',
+          name: cardOwner.full_name || cardOwner.email || 'Card Owner',
+          isCardOwner: true
+        });
+
+        // Get all card members (including invited users)
+        const { data: cardMembers } = await supabase
+          .from('card_members')
+          .select(`
+            user_id,
+            role,
+            profiles!inner(id, full_name, email)
+          `)
+          .eq('credit_card_id', selectedCard.id);
+
+        // Add card members (excluding the owner if they're already added)
+        if (cardMembers) {
+          cardMembers.forEach((member: any) => {
+            const profile = member.profiles;
+            if (profile && profile.id !== cardOwner.id) {
+              peopleArray.push({
+                id: profile.id,
+                name: profile.full_name || profile.email,
+                isCardOwner: false
+              });
+            }
           });
         }
-      }
 
-      setPeople(peopleArray);
-    }
-  }, [selectedCard, cardOwner, isCardMember, userProfile, setPeople]);
+        // Add shared email users (legacy support)
+        const sharedEmails = Array.isArray(selectedCard.shared_emails) 
+          ? selectedCard.shared_emails 
+          : [];
+
+        sharedEmails.forEach((email: string, index: number) => {
+          if (email !== cardOwner.email) {
+            // Check if this email is not already added as a member
+            const existingPerson = peopleArray.find(person => 
+              person.name === email || 
+              (typeof person.name === 'string' && person.name.includes(email))
+            );
+            
+            if (!existingPerson) {
+              peopleArray.push({
+                id: `shared-${index}`,
+                name: email,
+                isCardOwner: false
+              });
+            }
+          }
+        });
+
+        // Ensure current user is in the list if they're a member but not already added
+        if (isCardMember && userProfile) {
+          const currentUserExists = peopleArray.some(person => 
+            person.id === userProfile.id ||
+            person.name === userProfile.full_name || 
+            person.name === userProfile.email
+          );
+          
+          if (!currentUserExists) {
+            peopleArray.push({
+              id: userProfile.id,
+              name: userProfile.full_name || userProfile.email,
+              isCardOwner: false
+            });
+          }
+        }
+
+        console.log('Setting people array:', peopleArray);
+        setPeople(peopleArray);
+      } catch (error) {
+        console.error('Error initializing people:', error);
+      }
+    };
+
+    initializePeople();
+  }, [selectedCard, cardOwner, isCardMember, userProfile, setPeople, loading]);
 
   const addPerson = () => {
     // Only card owner can add new people
@@ -126,6 +175,19 @@ const PersonManager: React.FC<PersonManagerProps> = ({
     if (isCardMember || id === 'card-owner' || (cardOwner && id === cardOwner.id)) return;
     setPeople(prev => prev.filter(person => person.id !== id));
   };
+
+  if (loading) {
+    return (
+      <Card className="max-w-2xl mx-auto">
+        <CardContent className="p-6">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading people...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="max-w-2xl mx-auto">
@@ -171,7 +233,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
                       Card Owner
                     </Badge>
                   )}
-                  {!person.isCardOwner && isCardMember && person.name === (userProfile?.full_name || userProfile?.email) && (
+                  {!person.isCardOwner && isCardMember && person.id === userProfile?.id && (
                     <Badge variant="outline" className="text-xs">
                       You
                     </Badge>
@@ -197,6 +259,12 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         {people.length < 2 && !isCardMember && (
           <p className="text-sm text-muted-foreground text-center py-4">
             Add at least 1 more person to start splitting bills
+          </p>
+        )}
+
+        {people.length < 2 && isCardMember && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Loading card members...
           </p>
         )}
       </CardContent>
