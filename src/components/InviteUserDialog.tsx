@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,7 +93,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
-      // Create the invitation
+      // Create the invitation in database
       const { error: inviteError } = await supabase
         .from('card_invitations')
         .insert({
@@ -105,10 +104,34 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      toast({
-        title: "Invitation sent!",
-        description: `Successfully invited ${email} to ${cardName}`,
-      });
+      // Send invitation email using Supabase's built-in invite system
+      const { error: emailError } = await supabase.auth.admin.inviteUserByEmail(
+        email.toLowerCase(),
+        {
+          data: {
+            card_id: cardId,
+            card_name: cardName,
+            inviter_name: user.user_metadata?.full_name || user.email,
+            invitation_type: 'card_access'
+          },
+          redirectTo: `${window.location.origin}/onboarding?invitation=true&cardId=${cardId}`
+        }
+      );
+
+      if (emailError) {
+        console.error('Email sending error:', emailError);
+        // Still show success since the invitation was created in the database
+        toast({
+          title: "Invitation created",
+          description: `Invitation for ${email} was created but email sending failed. Please check your SMTP configuration.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Invitation sent!",
+          description: `Successfully invited ${email} to ${cardName}`,
+        });
+      }
 
       setEmail('');
       setOpen(false);
