@@ -25,11 +25,14 @@ export const useRealtimeTransactions = ({
   const loadTransactions = async () => {
     if (!selectedCard || !selectedMonth || !selectedYear || !user) {
       setTransactions([]);
+      setLoading(false); // Make sure to set loading to false
       return;
     }
 
     try {
       setLoading(true);
+      console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
+      
       const { data: dbTransactions, error } = await supabase
         .from('transactions')
         .select('*')
@@ -45,8 +48,11 @@ export const useRealtimeTransactions = ({
           description: "Failed to load transactions",
           variant: "destructive"
         });
+        setTransactions([]);
         return;
       }
+
+      console.log('Loaded transactions:', dbTransactions);
 
       // Convert database transactions to local format
       const localTransactions: Transaction[] = (dbTransactions || []).map(dbTransaction => ({
@@ -68,6 +74,7 @@ export const useRealtimeTransactions = ({
         description: "Failed to load transactions",
         variant: "destructive"
       });
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -75,12 +82,17 @@ export const useRealtimeTransactions = ({
 
   // Set up real-time subscription
   useEffect(() => {
-    if (!selectedCard || !user) return;
+    if (!selectedCard || !user) {
+      setLoading(false);
+      return;
+    }
+
+    console.log('Setting up real-time subscription for card:', selectedCard.id);
 
     // Load initial data
     loadTransactions();
 
-    // Set up real-time subscription
+    // Set up real-time subscription for this specific card
     const channel = supabase
       .channel(`transactions-${selectedCard.id}`)
       .on(
@@ -92,7 +104,7 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('New transaction inserted:', payload);
+          console.log('Real-time INSERT received:', payload);
           const newTransaction = payload.new;
           
           // Only add if it matches current month/year
@@ -111,18 +123,18 @@ export const useRealtimeTransactions = ({
             setTransactions(prev => {
               // Check if transaction already exists to avoid duplicates
               if (prev.some(t => t.id === localTransaction.id)) {
+                console.log('Transaction already exists, skipping duplicate');
                 return prev;
               }
+              console.log('Adding new transaction to state:', localTransaction);
               return [localTransaction, ...prev];
             });
 
-            // Show toast notification for other users
-            if (newTransaction.user_id !== user.id) {
-              toast({
-                title: "New Transaction",
-                description: `${newTransaction.description} - ₹${newTransaction.amount}`,
-              });
-            }
+            // Show toast notification for all users when someone adds a transaction
+            toast({
+              title: "New Transaction Added",
+              description: `${newTransaction.description} - ₹${newTransaction.amount}`,
+            });
           }
         }
       )
@@ -135,18 +147,16 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('Transaction deleted:', payload);
+          console.log('Real-time DELETE received:', payload);
           const deletedTransaction = payload.old;
           
           setTransactions(prev => prev.filter(t => t.id !== deletedTransaction.id));
 
-          // Show toast notification for other users
-          if (deletedTransaction.user_id !== user.id) {
-            toast({
-              title: "Transaction Deleted",
-              description: `${deletedTransaction.description} was removed`,
-            });
-          }
+          // Show toast notification for deletion
+          toast({
+            title: "Transaction Deleted",
+            description: `${deletedTransaction.description} was removed`,
+          });
         }
       )
       .on(
@@ -158,7 +168,7 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('Transaction updated:', payload);
+          console.log('Real-time UPDATE received:', payload);
           const updatedTransaction = payload.new;
           
           // Only update if it matches current month/year
@@ -176,30 +186,35 @@ export const useRealtimeTransactions = ({
 
             setTransactions(prev => prev.map(t => t.id === localTransaction.id ? localTransaction : t));
 
-            // Show toast notification for other users
-            if (updatedTransaction.user_id !== user.id) {
-              toast({
-                title: "Transaction Updated",
-                description: `${updatedTransaction.description} was modified`,
-              });
-            }
+            // Show toast notification for update
+            toast({
+              title: "Transaction Updated",
+              description: `${updatedTransaction.description} was modified`,
+            });
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
 
     return () => {
+      console.log('Cleaning up real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [selectedCard?.id, selectedMonth, selectedYear, user?.id]);
 
   // Reload when month/year changes
   useEffect(() => {
-    loadTransactions();
+    if (selectedCard && user) {
+      loadTransactions();
+    }
   }, [selectedMonth, selectedYear]);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     try {
+      console.log('Adding transaction:', transaction);
+      
       const dbTransaction = {
         user_id: user.id,
         credit_card_id: selectedCard.id,
@@ -220,7 +235,12 @@ export const useRealtimeTransactions = ({
         .select('id')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting transaction:', error);
+        throw error;
+      }
+      
+      console.log('Transaction inserted successfully:', data);
       return data.id;
     } catch (error) {
       console.error('Error saving transaction:', error);
@@ -230,12 +250,19 @@ export const useRealtimeTransactions = ({
 
   const deleteTransaction = async (transactionId: string) => {
     try {
+      console.log('Deleting transaction:', transactionId);
+      
       const { error } = await supabase
         .from('transactions')
         .delete()
         .eq('id', transactionId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting transaction:', error);
+        throw error;
+      }
+      
+      console.log('Transaction deleted successfully');
     } catch (error) {
       console.error('Error deleting transaction:', error);
       throw error;
