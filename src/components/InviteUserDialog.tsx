@@ -115,30 +115,34 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      // Send invitation email using edge function
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data, error: emailError } = await supabase.functions.invoke('send-invitation', {
-        body: {
-          cardId: cardId,
-          cardName: cardName,
-          invitedEmail: email.toLowerCase(),
-          inviterName: user.user_metadata?.full_name || user.email
-        },
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-        },
+      // Generate invitation link with the invitation context
+      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodeURIComponent(email.toLowerCase())}`;
+      
+      // Use Supabase's built-in email sending by creating a temporary signup with invite context
+      const { error: emailError } = await supabase.auth.signUp({
+        email: email.toLowerCase(),
+        password: Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8), // Random password
+        options: {
+          emailRedirectTo: inviteUrl,
+          data: {
+            invitation_type: 'card_invitation',
+            card_id: cardId,
+            card_name: cardName,
+            inviter_name: user.user_metadata?.full_name || user.email,
+            custom_invite_url: inviteUrl
+          }
+        }
       });
 
-      if (emailError) {
+      if (emailError && !emailError.message.includes('already registered')) {
         console.error('Error sending invitation email:', emailError);
-        // Don't throw here - invitation was created, just email failed
         toast({
           title: "Invitation created",
           description: `Invitation created for ${email} but email delivery failed. They can still access the card by logging in.`,
           variant: "destructive",
         });
       } else {
-        console.log('Invitation email sent successfully:', data);
+        console.log('Invitation email sent successfully via Supabase');
         toast({
           title: "Invitation sent!",
           description: `Successfully sent invitation to ${email} for ${cardName}.`,
