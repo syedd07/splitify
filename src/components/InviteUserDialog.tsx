@@ -59,84 +59,57 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Check if user is already invited or a member
-      const { data: existingInvite } = await supabase
-        .from('card_invitations')
-        .select('*')
-        .eq('credit_card_id', cardId)
-        .eq('invited_email', email.toLowerCase())
-        .eq('status', 'pending')
-        .maybeSingle();
+      console.log('Calling admin-invite-user edge function...');
 
-      if (existingInvite) {
-        toast({
-          title: "Already invited",
-          description: "This user has already been invited to this card",
-          variant: "destructive",
-        });
-        return;
+      // Call the admin edge function to handle the invitation
+      const { data, error } = await supabase.functions.invoke('admin-invite-user', {
+        body: {
+          cardId: cardId,
+          cardName: cardName,
+          invitedEmail: email.toLowerCase(),
+          inviterName: user.user_metadata?.full_name || user.email,
+        }
+      });
+
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Failed to send invitation');
       }
 
-      // Check if user is already a member by looking up their profile first
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
-
-      if (existingProfile) {
-        // Check if this user is already a member
-        const { data: existingMember } = await supabase
-          .from('card_members')
-          .select('*')
-          .eq('credit_card_id', cardId)
-          .eq('user_id', existingProfile.id)
-          .maybeSingle();
-
-        if (existingMember) {
+      if (data?.error) {
+        console.error('Invitation error:', data.error);
+        
+        if (data.error === 'User already invited') {
+          toast({
+            title: "Already invited",
+            description: "This user has already been invited to this card",
+            variant: "destructive",
+          });
+        } else if (data.error === 'User already a member') {
           toast({
             title: "Already a member",
             description: "This user is already a member of this card",
             variant: "destructive",
           });
-          return;
+        } else {
+          toast({
+            title: "Error",
+            description: data.error,
+            variant: "destructive",
+          });
         }
+        return;
       }
 
-      // Create the invitation in database
-      const { error: inviteError } = await supabase
-        .from('card_invitations')
-        .insert({
-          credit_card_id: cardId,
-          inviter_user_id: user.id,
-          invited_email: email.toLowerCase(),
-        });
-
-      if (inviteError) throw inviteError;
-
-      // Use Supabase's built-in invitation system
-      const inviteUrl = `https://ccardly.netlify.app/auth?invite=${cardId}&email=${encodeURIComponent(email.toLowerCase())}`;
-      
-      const { error: emailError } = await supabase.auth.admin.inviteUserByEmail(email.toLowerCase(), {
-        redirectTo: inviteUrl,
-        data: {
-          invitation_type: 'card_invitation',
-          card_id: cardId,
-          card_name: cardName,
-          inviter_name: user.user_metadata?.full_name || user.email,
-          custom_invite_url: inviteUrl,
-        }
-      });
-
-      if (emailError) {
-        console.error('Error sending invitation email:', emailError);
+      if (data?.warning) {
+        console.log('Invitation created with warning:', data.warning);
         toast({
           title: "Invitation created",
-          description: `Invitation created for ${email} but email delivery failed. They can still access the card by logging in.`,
+          description: data.warning,
           variant: "destructive",
         });
       } else {
-        console.log('Invitation email sent successfully via Supabase');
+        console.log('Invitation sent successfully via admin function');
         toast({
           title: "Invitation sent!",
           description: `Successfully sent invitation to ${email} for ${cardName}.`,
