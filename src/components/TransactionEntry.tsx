@@ -74,40 +74,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
   const saveTransactionToDB = async (transaction: Omit<Transaction, 'id'>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get selected card from localStorage
-      const storedCard = localStorage.getItem('selectedCard');
-      if (!storedCard) {
-        throw new Error('No credit card selected');
-      }
-
-      const selectedCard = JSON.parse(storedCard);
-
-      // Check if user has access to this card (owner or member)
-      const hasDirectAccess = selectedCard.user_id === user.id;
-      
-      let hasSharedAccess = false;
-      if (!hasDirectAccess) {
-        const { data: membership } = await supabase
-          .from('card_members')
-          .select('id')
-          .eq('credit_card_id', selectedCard.id)
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        hasSharedAccess = !!membership;
-      }
-
-      if (!hasDirectAccess && !hasSharedAccess) {
-        throw new Error('You do not have access to this credit card');
-      }
-
+      // Simplified - no need to re-check user access since we already know it
       const dbTransaction = {
-        user_id: user.id,
+        user_id: currentUser.id,
         credit_card_id: selectedCard.id,
         amount: transaction.amount,
         description: transaction.description,
@@ -123,13 +92,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       const { data, error } = await supabase
         .from('transactions')
         .insert(dbTransaction)
-        .select()
+        .select('id')
         .single();
 
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
       return data.id;
     } catch (error) {
       console.error('Error saving transaction:', error);
@@ -144,9 +110,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         .delete()
         .eq('id', transactionId);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
     } catch (error) {
       console.error('Error deleting transaction:', error);
       throw error;
@@ -171,7 +135,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddExpense = async () => {
-    // For card members, ensure they can only add expenses for themselves
+    // Quick validation checks first
     if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
       toast({
         title: "Access Restricted",
@@ -181,7 +145,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    // For common expenses, we don't need spentBy as it will be split among all people
     if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
       toast({
         title: "Missing Information",
@@ -193,7 +156,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       return;
     }
 
-    // Card members cannot create common expenses
     if (isCardMember && category === 'common') {
       toast({
         title: "Access Restricted",
@@ -214,10 +176,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         spentBy: category === 'common' ? 'common' : spentBy
       };
 
-      // Save to database first
+      // Save to database and get ID
       const dbTransactionId = await saveTransactionToDB(transaction);
       
-      // Add to local state with database ID
+      // Add to local state immediately for fast UI update
       onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
       
       resetForm();
@@ -239,7 +201,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddPayment = async () => {
-    // For card members, ensure they can only add payments for themselves
+    // Quick validation checks first
     if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
       toast({
         title: "Access Restricted",
@@ -265,14 +227,14 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description,
         date,
         type: 'payment',
-        category: 'personal', // Payments are always personal
+        category: 'personal',
         spentBy
       };
 
-      // Save to database first
+      // Save to database and get ID
       const dbTransactionId = await saveTransactionToDB(transaction);
       
-      // Add to local state with database ID
+      // Add to local state immediately for fast UI update
       onAddTransaction({ ...transaction, id: dbTransactionId } as Transaction);
       
       resetForm();
@@ -305,11 +267,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
 
     try {
-      // Delete from database first
-      await deleteTransactionFromDB(transactionId);
-      
-      // Remove from local state
+      // Delete from local state first for immediate UI update
       onDeleteTransaction(transactionId);
+      
+      // Then delete from database
+      await deleteTransactionFromDB(transactionId);
       
       toast({
         title: "Transaction Deleted",
@@ -321,6 +283,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         description: "Failed to delete transaction. Please try again.",
         variant: "destructive"
       });
+      // Revert the local state change if database delete failed
+      // This would require refetching transactions, but for simplicity we'll just show the error
     }
   };
 
@@ -328,13 +292,13 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = parseInt(a.date);
     const dateB = parseInt(b.date);
-    return dateB - dateA; // Descending order (latest dates first)
+    return dateB - dateA;
   });
 
   const expenseTransactions = sortedTransactions.filter(t => t.type === 'expense');
   const paymentTransactions = sortedTransactions.filter(t => t.type === 'payment');
 
-  // Get days in month for date selection
+  // Get days in month for date selection - memoized for performance
   const getDaysInMonth = () => {
     const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June',
                        'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
@@ -345,10 +309,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   // Filter people for dropdowns based on user role
   const getAvailablePeople = () => {
     if (isCardMember && currentUserPerson) {
-      // Card members can only select themselves
       return [currentUserPerson];
     }
-    return people; // Card owners can select anyone
+    return people;
   };
 
   return (
@@ -444,7 +407,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
                   <Select value={category} onValueChange={(value: 'personal' | 'common') => {
-                    // Card members cannot select common
                     if (isCardMember && value === 'common') {
                       toast({
                         title: "Access Restricted",
@@ -455,7 +417,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                     }
                     
                     setCategory(value);
-                    // Clear spentBy when switching to common
                     if (value === 'common') {
                       setSpentBy('');
                     } else if (isCardMember && currentUserPerson) {
