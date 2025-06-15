@@ -80,7 +80,30 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
   const fetchMembersAndInvitations = async () => {
     setLoading(true);
     try {
-      // Step 1: Fetch all members for the card
+      // Step 1: Check if user is card owner or has access
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Check if user has access to this card
+      const { data: userAccess } = await supabase
+        .from('credit_cards')
+        .select('user_id')
+        .eq('id', cardId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const { data: memberAccess } = await supabase
+        .from('card_members')
+        .select('user_id')
+        .eq('credit_card_id', cardId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!userAccess && !memberAccess) {
+        throw new Error('Access denied');
+      }
+
+      // Step 2: Fetch all members for the card
       const { data: membersData, error: membersError } = await supabase
         .from('card_members')
         .select('id, user_id, role, created_at')
@@ -88,29 +111,66 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
 
       if (membersError) throw membersError;
 
-      // Step 2: Fetch profiles for all member user_ids
-      const userIds = (membersData || []).map((m) => m.user_id);
-      let profilesMap: Record<string, { email: string; full_name: string | null }> = {};
+      // Step 3: Fetch card owner as well
+      const { data: cardOwner, error: ownerError } = await supabase
+        .from('credit_cards')
+        .select('user_id')
+        .eq('id', cardId)
+        .single();
 
-      if (userIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, email, full_name')
-          .in('id', userIds);
-        if (profilesError) throw profilesError;
-        profilesMap = (profilesData || []).reduce((acc, prof) => {
-          acc[prof.id] = { email: prof.email || "", full_name: prof.full_name };
-          return acc;
-        }, {} as Record<string, { email: string; full_name: string | null }>);
-      }
+      if (ownerError) throw ownerError;
 
-      // Step 3: Merge members with profiles
-      const members: Member[] = (membersData || []).map((m) => ({
-        ...m,
-        profiles: profilesMap[m.user_id] || { email: "", full_name: null },
-      }));
+      // Step 4: Collect all unique user IDs
+      const allUserIds = new Set<string>();
+      
+      // Add card owner
+      allUserIds.add(cardOwner.user_id);
+      
+      // Add all members
+      (membersData || []).forEach(member => {
+        allUserIds.add(member.user_id);
+      });
 
-      // Invite logic stays the same
+      // Step 5: Fetch profiles for all users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', Array.from(allUserIds));
+
+      if (profilesError) throw profilesError;
+
+      // Create profiles map
+      const profilesMap = (profilesData || []).reduce((acc, profile) => {
+        acc[profile.id] = {
+          email: profile.email || '',
+          full_name: profile.full_name
+        };
+        return acc;
+      }, {} as Record<string, { email: string; full_name: string | null }>);
+
+      // Step 6: Build members list including owner
+      const allMembers: Member[] = [];
+
+      // Add card owner first
+      allMembers.push({
+        id: `owner-${cardOwner.user_id}`,
+        user_id: cardOwner.user_id,
+        role: 'owner',
+        created_at: new Date().toISOString(),
+        profiles: profilesMap[cardOwner.user_id] || { email: '', full_name: null }
+      });
+
+      // Add other members (excluding owner if they're also in card_members)
+      (membersData || []).forEach(member => {
+        if (member.user_id !== cardOwner.user_id) {
+          allMembers.push({
+            ...member,
+            profiles: profilesMap[member.user_id] || { email: '', full_name: null }
+          });
+        }
+      });
+
+      // Step 7: Fetch pending invitations
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('card_invitations')
         .select('*')
@@ -119,13 +179,13 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
 
       if (invitationsError) throw invitationsError;
 
-      setMembers(members);
+      setMembers(allMembers);
       setInvitations(invitationsData || []);
     } catch (error: any) {
       console.error('Error fetching members:', error);
       toast({
         title: "Error",
-        description: "Failed to load members and invitations",
+        description: error.message || "Failed to load members and invitations",
         variant: "destructive",
       });
     } finally {
@@ -237,7 +297,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
                       {member.role === 'member' && (
                         <Badge variant="outline">Member</Badge>
                       )}
-                      {member.user_id !== currentUserId && member.role !== 'owner' && (
+                      {member.user_id !== currentUserId && member.role !== 'owner' && !member.id.startsWith('owner-') && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="sm" className="text-red-600">
