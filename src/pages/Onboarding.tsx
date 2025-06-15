@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +27,7 @@ const Onboarding = () => {
   const [loading, setLoading] = useState(true);
   const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [processingInvitation, setProcessingInvitation] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -52,24 +52,25 @@ const Onboarding = () => {
       
       if (isInvite && cardId) {
         console.log('Processing invitation for card:', cardId);
+        setProcessingInvitation(true);
         await handleInvitationAcceptance(cardId, session.user);
+        setProcessingInvitation(false);
       }
       
-      // Only fetch credit cards after we have the user
+      // Fetch credit cards after processing invitation
       await fetchCreditCards(session.user);
       setLoading(false);
     };
 
     checkAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session) {
         navigate('/auth');
       } else {
         setUser(session.user);
-        // Fetch cards when auth state changes and we have a user
         if (session.user) {
-          fetchCreditCards(session.user);
+          await fetchCreditCards(session.user);
         }
       }
     });
@@ -77,59 +78,78 @@ const Onboarding = () => {
     return () => subscription.unsubscribe();
   }, [navigate, searchParams]);
 
-  const handleInvitationAcceptance = async (cardId: string, user: any) => {
+  const handleInvitationAcceptance = async (cardId: string, currentUser: any) => {
     try {
-      console.log('Processing invitation for card:', cardId, 'user:', user.email);
+      console.log('Processing invitation for card:', cardId, 'user:', currentUser.email);
       
       // Find the pending invitation for this user and card
       const { data: invitation, error: inviteError } = await supabase
         .from('card_invitations')
         .select('*')
         .eq('credit_card_id', cardId)
-        .eq('invited_email', user.email.toLowerCase())
+        .eq('invited_email', currentUser.email.toLowerCase())
         .eq('status', 'pending')
         .maybeSingle();
 
       if (inviteError) {
         console.error('Error finding invitation:', inviteError);
+        toast({
+          title: "Error",
+          description: "Failed to process invitation",
+          variant: "destructive",
+        });
         return;
       }
 
       if (invitation) {
         console.log('Found invitation:', invitation.id);
         
+        // Check if user is already a member of this card
+        const { data: existingMember } = await supabase
+          .from('card_members')
+          .select('*')
+          .eq('credit_card_id', cardId)
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+
+        if (!existingMember) {
+          // Add user as a member of the card
+          const { error: memberError } = await supabase
+            .from('card_members')
+            .insert({
+              credit_card_id: cardId,
+              user_id: currentUser.id,
+              role: 'member'
+            });
+
+          if (memberError) {
+            console.error('Error adding card member:', memberError);
+            toast({
+              title: "Error",
+              description: "Failed to add you as a card member",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          console.log('User added as card member');
+        }
+
         // Update invitation status to accepted
         const { error: updateError } = await supabase
           .from('card_invitations')
           .update({ 
             status: 'accepted',
-            invited_user_id: user.id,
+            invited_user_id: currentUser.id,
             updated_at: new Date().toISOString()
           })
           .eq('id', invitation.id);
 
         if (updateError) {
           console.error('Error updating invitation:', updateError);
-          return;
+        } else {
+          console.log('Invitation status updated to accepted');
         }
-
-        console.log('Invitation status updated to accepted');
-
-        // Add user as a member of the card
-        const { error: memberError } = await supabase
-          .from('card_members')
-          .insert({
-            credit_card_id: cardId,
-            user_id: user.id,
-            role: 'member'
-          });
-
-        if (memberError) {
-          console.error('Error adding card member:', memberError);
-          return;
-        }
-
-        console.log('User added as card member');
 
         // Get card name for the toast
         const { data: cardData } = await supabase
@@ -147,6 +167,11 @@ const Onboarding = () => {
         navigate('/onboarding', { replace: true });
       } else {
         console.log('No pending invitation found for this user and card');
+        toast({
+          title: "No invitation found",
+          description: "This invitation may have already been accepted or expired",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Error processing invitation:', error);
@@ -160,7 +185,6 @@ const Onboarding = () => {
 
   const fetchCreditCards = async (currentUser?: any) => {
     try {
-      // Use the passed user or the state user, and ensure we have a valid user
       const userToUse = currentUser || user;
       if (!userToUse?.id) {
         console.log('No user available for fetching credit cards');
@@ -176,7 +200,11 @@ const Onboarding = () => {
         .eq('user_id', userToUse.id)
         .order('created_at', { ascending: true });
 
-      if (ownedError) throw ownedError;
+      if (ownedError) {
+        console.error('Error fetching owned cards:', ownedError);
+        throw ownedError;
+      }
+      
       console.log('Owned cards:', ownedCards);
 
       // Fetch shared cards through memberships
@@ -191,20 +219,26 @@ const Onboarding = () => {
             issuing_bank,
             card_type,
             bin_info,
-            user_id
+            user_id,
+            is_primary,
+            created_at,
+            updated_at
           )
         `)
-        .eq('user_id', userToUse.id)
-        .neq('role', 'owner'); // Exclude owner roles (those are already in ownedCards)
+        .eq('user_id', userToUse.id);
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error('Error fetching member cards:', memberError);
+        throw memberError;
+      }
+      
       console.log('Member cards:', memberCards);
 
       // Combine owned and shared cards
       const allCards: CreditCardData[] = [];
       
-      // Add owned cards
-      if (ownedCards) {
+      // Add owned cards with owner role
+      if (ownedCards && ownedCards.length > 0) {
         ownedCards.forEach((card, index) => {
           allCards.push({
             ...card,
@@ -214,15 +248,19 @@ const Onboarding = () => {
         });
       }
 
-      // Add shared cards
-      if (memberCards) {
+      // Add shared cards with their respective roles
+      if (memberCards && memberCards.length > 0) {
         memberCards.forEach((membership: any) => {
           if (membership.credit_cards) {
-            allCards.push({
-              ...membership.credit_cards,
-              is_primary: false,
-              role: membership.role
-            });
+            // Don't add cards we already own
+            const isAlreadyOwned = ownedCards?.some(owned => owned.id === membership.credit_cards.id);
+            if (!isAlreadyOwned) {
+              allCards.push({
+                ...membership.credit_cards,
+                is_primary: false,
+                role: membership.role
+              });
+            }
           }
         });
       }
@@ -230,6 +268,7 @@ const Onboarding = () => {
       console.log('All cards combined:', allCards);
       setCreditCards(allCards);
       
+      // Set first card as selected if none selected and we have cards
       if (allCards.length > 0 && !selectedCardId) {
         setSelectedCardId(allCards[0].id);
       }
@@ -266,7 +305,7 @@ const Onboarding = () => {
 
   const handleCardAdded = (newCard: CreditCardData) => {
     const isFirstCard = creditCards.length === 0;
-    const cardWithPrimary = { ...newCard, is_primary: isFirstCard };
+    const cardWithPrimary = { ...newCard, is_primary: isFirstCard, role: 'owner' };
     
     setCreditCards(prev => [cardWithPrimary, ...prev]);
     setShowAddCard(false);
@@ -324,10 +363,15 @@ const Onboarding = () => {
     setSelectedCardId(cardId);
   };
 
-  if (loading) {
+  if (loading || processingInvitation) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">
+            {processingInvitation ? 'Processing invitation...' : 'Loading...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -372,25 +416,27 @@ const Onboarding = () => {
           {/* Cards Grid */}
           <div className="max-w-6xl mx-auto">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* Add New Card Button (only for owned cards) */}
-              <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
-                <CardContent className="p-6 flex flex-col items-center justify-center h-full min-h-[200px]">
-                  <button
-                    onClick={() => setShowAddCard(true)}
-                    className="w-full flex flex-col items-center gap-4 text-blue-600 hover:text-blue-700"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Plus className="w-6 h-6" />
-                    </div>
-                    <div className="text-center">
-                      <h3 className="font-semibold">Add New Card</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Add another credit card
-                      </p>
-                    </div>
-                  </button>
-                </CardContent>
-              </Card>
+              {/* Add New Card Button (only show if user has owned cards or no cards) */}
+              {(creditCards.some(card => card.role === 'owner') || creditCards.length === 0) && (
+                <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
+                  <CardContent className="p-6 flex flex-col items-center justify-center h-full min-h-[200px]">
+                    <button
+                      onClick={() => setShowAddCard(true)}
+                      className="w-full flex flex-col items-center gap-4 text-blue-600 hover:text-blue-700"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Plus className="w-6 h-6" />
+                      </div>
+                      <div className="text-center">
+                        <h3 className="font-semibold">Add New Card</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Add another credit card
+                        </p>
+                      </div>
+                    </button>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Existing Credit Cards */}
               {creditCards.map((card) => (
