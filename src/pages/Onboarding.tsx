@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User } from 'lucide-react';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
+import InviteUserForm from '@/components/InviteUserForm';
 
 interface CreditCardData {
   id: string;
@@ -26,6 +28,7 @@ const Onboarding = () => {
   const [loading, setLoading] = useState(true);
   const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -185,6 +188,25 @@ const Onboarding = () => {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Invite User
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="p-0 border-0 bg-transparent shadow-none">
+                  <InviteUserForm 
+                    onClose={() => setShowInviteDialog(false)}
+                    onInviteSent={() => {
+                      toast({
+                        title: "Success!",
+                        description: "Invitation sent successfully!",
+                      });
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
               <Button onClick={() => navigate('/profile')} variant="outline" size="sm">
                 <User className="w-4 h-4 mr-2" />
                 Profile
@@ -293,6 +315,25 @@ const Onboarding = () => {
                 Back to Cards
               </Button>
             )}
+            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="p-0 border-0 bg-transparent shadow-none">
+                <InviteUserForm 
+                  onClose={() => setShowInviteDialog(false)}
+                  onInviteSent={() => {
+                    toast({
+                      title: "Success!",
+                      description: "Invitation sent successfully!",
+                    });
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
             <Button onClick={handleSignOut} variant="outline" size="sm">
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out
