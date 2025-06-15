@@ -122,30 +122,41 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: `${email} has been invited to access ${cardName}. Since they already have an account, they can log in to see the shared card.`,
         });
       } else {
-        // For new users, use regular signup with invitation context
-        const { error: signUpError } = await supabase.auth.signUp({
+        // For new users, use regular signup which will send a confirmation email
+        const redirectUrl = `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`;
+        console.log('Sending signup invitation with redirect URL:', redirectUrl);
+        
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: email.toLowerCase(),
-          password: Math.random().toString(36) + Math.random().toString(36), // Random password they'll need to reset
+          password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + 'A1!', // Random secure password
           options: {
-            emailRedirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
+            emailRedirectTo: redirectUrl,
             data: {
               card_id: cardId,
               card_name: cardName,
               inviter_name: user.user_metadata?.full_name || user.email,
-              invitation: true,
-              email_confirm: false // Skip email confirmation for invites
+              invitation: true
             }
           }
         });
 
-        if (signUpError && !signUpError.message.includes('already registered')) {
-          throw signUpError;
-        }
+        console.log('SignUp response:', { data: signUpData, error: signUpError });
 
-        toast({
-          title: "Invitation sent!",
-          description: `Successfully invited ${email} to ${cardName}. They will receive an email to set up their account and access the card.`,
-        });
+        if (signUpError) {
+          if (signUpError.message.includes('already registered')) {
+            toast({
+              title: "User already exists",
+              description: `${email} already has an account. They can log in to see the shared card.`,
+            });
+          } else {
+            throw signUpError;
+          }
+        } else {
+          toast({
+            title: "Invitation sent!",
+            description: `Successfully invited ${email} to ${cardName}. They will receive an email to confirm their account and access the card.`,
+          });
+        }
       }
 
       setEmail('');
