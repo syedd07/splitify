@@ -115,26 +115,21 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      // Generate invitation link with the invitation context
+      // Generate proper invitation link
       const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodeURIComponent(email.toLowerCase())}`;
       
-      // Use Supabase's built-in email sending by creating a temporary signup with invite context
-      const { error: emailError } = await supabase.auth.signUp({
-        email: email.toLowerCase(),
-        password: Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8), // Random password
-        options: {
-          emailRedirectTo: inviteUrl,
-          data: {
-            invitation_type: 'card_invitation',
-            card_id: cardId,
-            card_name: cardName,
-            inviter_name: user.user_metadata?.full_name || user.email,
-            custom_invite_url: inviteUrl
-          }
+      // Use Supabase's admin invite user function to send proper invitation email
+      const { error: emailError } = await supabase.auth.admin.inviteUserByEmail(email.toLowerCase(), {
+        redirectTo: inviteUrl,
+        data: {
+          invitation_type: 'card_invitation',
+          card_id: cardId,
+          card_name: cardName,
+          inviter_name: user.user_metadata?.full_name || user.email,
         }
       });
 
-      if (emailError && !emailError.message.includes('already registered')) {
+      if (emailError) {
         console.error('Error sending invitation email:', emailError);
         toast({
           title: "Invitation created",
@@ -142,7 +137,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           variant: "destructive",
         });
       } else {
-        console.log('Invitation email sent successfully via Supabase');
+        console.log('Invitation email sent successfully via Supabase admin API');
         toast({
           title: "Invitation sent!",
           description: `Successfully sent invitation to ${email} for ${cardName}.`,
