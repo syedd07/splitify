@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -103,7 +104,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         }
       }
 
-      // Create the invitation in database first
+      // Create the invitation in database
       const { error: inviteError } = await supabase
         .from('card_invitations')
         .insert({
@@ -114,59 +115,36 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       if (inviteError) throw inviteError;
 
-      // Check if user already exists in auth system
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
-
-      if (existingUser) {
+      if (existingProfile) {
         // User exists, they just need to log in to see the shared card
         toast({
           title: "Invitation created",
           description: `${email} has been invited to access ${cardName}. Since they already have an account, they can log in to see the shared card.`,
         });
       } else {
-        // Create new user with invitation context using admin API
-        const { error: signUpError } = await supabase.auth.admin.inviteUserByEmail(
-          email.toLowerCase(),
-          {
-            redirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
+        // For new users, use regular signup with invitation context
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: email.toLowerCase(),
+          password: Math.random().toString(36) + Math.random().toString(36), // Random password they'll need to reset
+          options: {
+            emailRedirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
             data: {
               card_id: cardId,
               card_name: cardName,
               inviter_name: user.user_metadata?.full_name || user.email,
-              invitation: true
+              invitation: true,
+              email_confirm: false // Skip email confirmation for invites
             }
           }
-        );
+        });
 
-        if (signUpError) {
-          console.error('Invitation error:', signUpError);
-          // Fallback to regular signup if admin invite fails
-          const { error: fallbackError } = await supabase.auth.signUp({
-            email: email.toLowerCase(),
-            password: Math.random().toString(36) + Math.random().toString(36), // Random password
-            options: {
-              emailRedirectTo: `${window.location.origin}/onboarding?invite=true&cardId=${cardId}`,
-              data: {
-                card_id: cardId,
-                card_name: cardName,
-                inviter_name: user.user_metadata?.full_name || user.email,
-                invitation: true
-              }
-            }
-          });
-
-          if (fallbackError && !fallbackError.message.includes('already registered')) {
-            throw fallbackError;
-          }
+        if (signUpError && !signUpError.message.includes('already registered')) {
+          throw signUpError;
         }
 
         toast({
           title: "Invitation sent!",
-          description: `Successfully invited ${email} to ${cardName}. They will receive an invitation email.`,
+          description: `Successfully invited ${email} to ${cardName}. They will receive an email to set up their account and access the card.`,
         });
       }
 
@@ -202,6 +180,9 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
             <Mail className="w-5 h-5 text-blue-600" />
             Invite User to {cardName}
           </DialogTitle>
+          <DialogDescription>
+            Send an invitation to share this credit card with another user
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
