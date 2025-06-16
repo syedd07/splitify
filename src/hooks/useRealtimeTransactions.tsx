@@ -25,7 +25,7 @@ export const useRealtimeTransactions = ({
   const loadTransactions = async () => {
     if (!selectedCard || !selectedMonth || !selectedYear || !user) {
       setTransactions([]);
-      setLoading(false); // Make sure to set loading to false
+      setLoading(false);
       return;
     }
 

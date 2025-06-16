@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -207,7 +208,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     const transaction = transactions.find(t => t.id === transactionId);
     
     // Card members can only delete their own transactions
-    if (isCardMember && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.id) {
+    // Card owners can delete any transaction
+    const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
+    
+    if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.id) {
       toast({
         title: "Access Restricted",
         description: "You can only delete your own transactions.",
@@ -460,7 +464,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Transaction History
+              Transaction History - All Card Transactions
               <div className="ml-auto flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm text-muted-foreground">Live</span>
@@ -485,7 +489,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
-                      const canDelete = !isCardMember || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
                       
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
@@ -500,7 +505,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                               </Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {person?.name} • {transaction.date} {month} {year}
+                              {person?.name || transaction.spentBy} • {transaction.date} {month} {year}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -529,7 +534,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
                       const person = people.find(p => p.id === transaction.spentBy);
-                      const canDelete = !isCardMember || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
                       
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
@@ -541,7 +547,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                               </Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {person?.name} • {transaction.date} {month} {year}
+                              {person?.name || transaction.spentBy} • {transaction.date} {month} {year}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
