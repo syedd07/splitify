@@ -33,7 +33,7 @@ export const useRealtimeTransactions = ({
       setLoading(true);
       console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
       
-      // Remove user_id filter - let RLS handle access control
+      // Query all transactions for this card - RLS policies will handle access control
       const { data: dbTransactions, error } = await supabase
         .from('transactions')
         .select('*')
@@ -53,7 +53,8 @@ export const useRealtimeTransactions = ({
         return;
       }
 
-      console.log('Loaded transactions:', dbTransactions);
+      console.log('Loaded transactions from DB:', dbTransactions);
+      console.log('Number of transactions loaded:', dbTransactions?.length || 0);
 
       // Convert database transactions to local format
       const localTransactions: Transaction[] = (dbTransactions || []).map(dbTransaction => ({
@@ -67,6 +68,7 @@ export const useRealtimeTransactions = ({
         isCommonSplit: dbTransaction.is_common_split || false
       }));
 
+      console.log('Converted local transactions:', localTransactions);
       setTransactions(localTransactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -208,6 +210,7 @@ export const useRealtimeTransactions = ({
   // Reload when month/year changes
   useEffect(() => {
     if (selectedCard && user) {
+      console.log('Month/Year changed, reloading transactions...');
       loadTransactions();
     }
   }, [selectedMonth, selectedYear]);
@@ -229,6 +232,8 @@ export const useRealtimeTransactions = ({
         year: selectedYear,
         is_common_split: transaction.isCommonSplit || false
       };
+
+      console.log('Inserting transaction to DB:', dbTransaction);
 
       const { data, error } = await supabase
         .from('transactions')
