@@ -24,6 +24,12 @@ export const useRealtimeTransactions = ({
   // Load initial transactions
   const loadTransactions = async () => {
     if (!selectedCard || !selectedMonth || !selectedYear || !user) {
+      console.log('Missing required data for loading transactions:', {
+        selectedCard: !!selectedCard,
+        selectedMonth: !!selectedMonth,
+        selectedYear: !!selectedYear,
+        user: !!user
+      });
       setTransactions([]);
       setLoading(false);
       return;
@@ -32,6 +38,7 @@ export const useRealtimeTransactions = ({
     try {
       setLoading(true);
       console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
+      console.log('Current user:', user.id, user.email);
       
       // Query all transactions for this card - RLS policies will handle access control
       const { data: dbTransactions, error } = await supabase
@@ -53,22 +60,33 @@ export const useRealtimeTransactions = ({
         return;
       }
 
-      console.log('Loaded transactions from DB:', dbTransactions);
-      console.log('Number of transactions loaded:', dbTransactions?.length || 0);
+      console.log('Raw DB query result:', dbTransactions);
+      console.log('Number of transactions loaded from DB:', dbTransactions?.length || 0);
+
+      if (dbTransactions && dbTransactions.length > 0) {
+        console.log('First transaction details:', dbTransactions[0]);
+        console.log('All transaction spent_by values:', dbTransactions.map(t => t.spent_by_person_name));
+      }
 
       // Convert database transactions to local format
-      const localTransactions: Transaction[] = (dbTransactions || []).map(dbTransaction => ({
-        id: dbTransaction.id,
-        amount: parseFloat(dbTransaction.amount.toString()),
-        description: dbTransaction.description,
-        date: dbTransaction.transaction_date.split('-')[2], // Extract day from YYYY-MM-DD
-        type: dbTransaction.transaction_type as 'expense' | 'payment',
-        category: dbTransaction.category as 'personal' | 'common',
-        spentBy: dbTransaction.spent_by_person_name,
-        isCommonSplit: dbTransaction.is_common_split || false
-      }));
+      const localTransactions: Transaction[] = (dbTransactions || []).map(dbTransaction => {
+        console.log('Converting transaction:', dbTransaction.id, 'spent_by:', dbTransaction.spent_by_person_name);
+        
+        return {
+          id: dbTransaction.id,
+          amount: parseFloat(dbTransaction.amount.toString()),
+          description: dbTransaction.description,
+          date: dbTransaction.transaction_date.split('-')[2], // Extract day from YYYY-MM-DD
+          type: dbTransaction.transaction_type as 'expense' | 'payment',
+          category: dbTransaction.category as 'personal' | 'common',
+          spentBy: dbTransaction.spent_by_person_name,
+          isCommonSplit: dbTransaction.is_common_split || false
+        };
+      });
 
       console.log('Converted local transactions:', localTransactions);
+      console.log('Local transactions count:', localTransactions.length);
+      
       setTransactions(localTransactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -86,6 +104,10 @@ export const useRealtimeTransactions = ({
   // Set up real-time subscription
   useEffect(() => {
     if (!selectedCard || !user) {
+      console.log('Cannot set up real-time subscription - missing data:', {
+        selectedCard: !!selectedCard,
+        user: !!user
+      });
       setLoading(false);
       return;
     }
