@@ -33,6 +33,7 @@ export const useRealtimeTransactions = ({
       setLoading(true);
       console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
       
+      // Remove user_id filter - let RLS handle access control
       const { data: dbTransactions, error } = await supabase
         .from('transactions')
         .select('*')
