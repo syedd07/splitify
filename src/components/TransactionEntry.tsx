@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -44,6 +43,18 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [loading, setLoading] = useState(false);
   const [isCardMember, setIsCardMember] = useState(false);
   const [currentUserPerson, setCurrentUserPerson] = useState<Person | null>(null);
+
+  // Helper function to get person name by ID
+  const getPersonNameById = (personId: string) => {
+    console.log('Looking for person with ID:', personId, 'in people array:', people);
+    const person = people.find(p => p.id === personId);
+    if (person) {
+      console.log('Found person:', person.name);
+      return person.name;
+    }
+    console.log('Person not found, returning ID as fallback:', personId);
+    return personId; // Fallback to ID if person not found
+  };
 
   // Check if current user is card member and set default spentBy
   useEffect(() => {
@@ -488,9 +499,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
-                      const person = people.find(p => p.id === transaction.spentBy);
+                      const personName = getPersonNameById(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
                       const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      
+                      console.log('Rendering expense transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
@@ -505,7 +518,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                               </Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {person?.name || transaction.spentBy} • {transaction.date} {month} {year}
+                              {personName} • {transaction.date} {month} {year}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -533,9 +546,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
-                      const person = people.find(p => p.id === transaction.spentBy);
+                      const personName = getPersonNameById(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
                       const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      
+                      console.log('Rendering payment transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
@@ -547,7 +562,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                               </Badge>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {person?.name || transaction.spentBy} • {transaction.date} {month} {year}
+                              {personName} • {transaction.date} {month} {year}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
