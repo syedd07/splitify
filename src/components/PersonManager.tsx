@@ -227,15 +227,19 @@ const PersonManager: React.FC<PersonManagerProps> = ({
           <div className="pt-4 border-t space-y-3">
             <div className="flex flex-col sm:flex-row gap-3">
               <InviteUserDialog 
-                selectedCard={selectedCard}
-                onInviteSuccess={() => {
-                  toast({
-                    title: "Invitation Sent",
-                    description: "The user has been invited to access this card."
-                  });
-                }}
+                cardId={selectedCard.id}
+                cardName={selectedCard.card_name}
+                trigger={
+                  <Button variant="outline">
+                    <Mail className="w-4 h-4 mr-2" />
+                    Invite User
+                  </Button>
+                }
               />
-              <CardMembersDialog selectedCard={selectedCard} />
+              <CardMembersDialog 
+                cardId={selectedCard.id}
+                cardName={selectedCard.card_name}
+              />
             </div>
             <p className="text-sm text-muted-foreground">
               Manage who has access to this credit card and can add transactions
