@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Transaction } from '@/types/BillSplitter';
+import { Transaction, Person } from '@/types/BillSplitter'; // Add Person import
 import { useToast } from '@/hooks/use-toast';
 
 interface UseRealtimeTransactionsProps {
@@ -18,6 +18,8 @@ export const useRealtimeTransactions = ({
 }: UseRealtimeTransactionsProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+  // Add the missing people state
+  const [people, setPeople] = useState<Person[]>([]);
   const { toast } = useToast();
 
   // Load initial transactions
@@ -339,9 +341,61 @@ export const useRealtimeTransactions = ({
     }
   };
 
+  // When fetching people data from profiles table
+  const fetchPeopleForCard = async (cardId: string) => {
+    try {
+      // Get card members
+      // @ts-ignore - Skip type checking for this complex query
+      const result = await supabase
+        .from('card_members')
+        .select('user_id')
+        .eq('card_id', cardId);
+      
+      if (result.error) throw result.error;
+      
+      const memberIds = (result.data || []).map((member: any) => member.user_id);
+      
+      // Include the card owner in people
+      if (selectedCard && !memberIds.includes(selectedCard.user_id)) {
+        memberIds.push(selectedCard.user_id);
+      }
+      
+      // Get profiles with full_name field
+      // @ts-ignore - Skip type checking
+      const profilesResult = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', memberIds);
+      
+      if (profilesResult.error) throw profilesResult.error;
+      const profiles = profilesResult.data;
+      
+      // Create Person objects with proper name handling
+      const newPeople: Person[] = profiles.map(profile => ({
+        id: profile.id,
+        // Use full_name if available, otherwise use email as fallback
+        name: profile.full_name || profile.email,
+        isCardOwner: profile.id === selectedCard?.user_id
+      }));
+      
+      setPeople(newPeople);
+      return newPeople;
+    } catch (error) {
+      console.error('Error fetching people for card:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load people for this card.",
+        variant: "destructive",
+      });
+      return [];
+    }
+  };
+
   return {
     transactions,
     loading,
+    people, // Add people to the returned values
+    fetchPeopleForCard, // Add the function to the returned values
     addTransaction,
     deleteTransaction,
     refreshTransactions: loadTransactions

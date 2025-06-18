@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -162,9 +161,9 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
     <Card 
       className={`relative overflow-hidden transition-all duration-300 cursor-pointer transform hover:scale-105 ${
         isSelected 
-          ? 'ring-4 ring-blue-500 ring-offset-4 shadow-2xl scale-105' 
-          : 'hover:shadow-xl shadow-lg'
-      } bg-white border-2 border-gray-100`}
+          ? 'ring-2 sm:ring-4 ring-blue-500 ring-offset-2 sm:ring-offset-4 shadow-xl scale-105' 
+          : 'hover:shadow-xl shadow-md'
+      } bg-white border border-gray-100 mx-auto w-full max-w-[350px] sm:max-w-none`}
       onClick={() => onSelect(card.id)}
     >
       <CardContent className="p-0">

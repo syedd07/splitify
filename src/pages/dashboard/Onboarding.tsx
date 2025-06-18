@@ -17,6 +17,7 @@ import CreditCardDisplay from '@/components/CreditCardDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/hooks/useAuth';
 
+
 interface CreditCardData {
   id: string;
   card_name: string;
@@ -31,7 +32,7 @@ interface CreditCardData {
 }
 
 const Onboarding = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
   const [loading, setLoading] = useState(false); // Only for card-specific operations
@@ -44,6 +45,7 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  
 
   useEffect(() => {
     let isMounted = true;
@@ -413,8 +415,8 @@ const Onboarding = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
         <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
-          {/* Responsive Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
+          {/* Responsive Header - IMPROVED ALIGNMENT */}
+          <div className="flex justify-between items-center mb-6 sm:mb-8">
             <div className="flex items-center gap-2">
               <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
@@ -434,15 +436,22 @@ const Onboarding = () => {
               </Button>
             </div>
 
-            {/* Mobile Menu */}
-            <MobileMenu />
+            {/* Mobile Menu - Now properly aligned */}
+            <div className="md:hidden flex items-center">
+              {/* {creditCards.length > 0 && (
+                <Button onClick={() => setShowAddCard(false)} variant="outline" size="sm" className="mr-2">
+                  Back
+                </Button>
+              )} */}
+              <MobileMenu />
+            </div>
           </div>
 
           {/* User Welcome */}
           {user && (
             <div className="mb-6 sm:mb-8 text-center sm:text-left">
               <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-800 mb-2">
-                Welcome back, {user.user_metadata?.full_name || user.email}!
+                Welcome back, {userProfile?.full_name || user.email}!
               </h2>
               <p className="text-sm sm:text-base lg:text-lg text-muted-foreground">
                 Select a credit card to start splitting bills with ease
@@ -466,8 +475,8 @@ const Onboarding = () => {
           )}
 
           {/* Responsive Cards Grid */}
-          <div className="max-w-7xl mx-auto">
-            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-2">
+            <div className="grid gap-6 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {/* Add New Card Button (only show if user has owned cards or no cards) */}
               {(creditCards.some(card => card.role === 'owner') || creditCards.length === 0) && (
                 <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
@@ -547,6 +556,7 @@ const Onboarding = () => {
             </h1>
           </div>
           
+          
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-3">
             {creditCards.length > 0 && (
@@ -560,14 +570,16 @@ const Onboarding = () => {
             </Button>
           </div>
 
-          {/* Mobile Menu */}
-          <div className="flex md:hidden items-center gap-2">
+          {/* Mobile Menu - Now positioned on the right with flex row and justify-between */}
+          <div className="md:hidden flex w-full justify-between items-center">
             {creditCards.length > 0 && (
               <Button onClick={() => setShowAddCard(false)} variant="outline" size="sm">
                 Back
               </Button>
             )}
-            <MobileMenu />
+            <div className={creditCards.length > 0 ? "ml-auto" : ""}>
+              <MobileMenu />
+            </div>
           </div>
         </div>
 

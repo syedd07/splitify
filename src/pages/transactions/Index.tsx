@@ -387,8 +387,10 @@ const fetchPeopleForCard = async (cardId: string) => {
             )}
           </div>
 
-          {/* Mobile Menu */}
-          <MobileMenu />
+          {/* Mobile Menu - Now positioned on the right with auto margin */}
+          <div className="md:hidden ml-auto">
+            <MobileMenu />
+          </div>
         </div>
 
         {/* Responsive Welcome Message */}

@@ -49,8 +49,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
    // console.log('Looking for person with ID:', personId, 'in people array:', people);
     const person = people.find(p => p.id === personId);
     if (person) {
-    //  console.log('Found person:', person.name);
-      return person.name;
+      //  console.log('Found person:', person.name);
+      return person ? person.name : personId;
     }
    // console.log('Person not found, returning ID as fallback:', personId);
     return personId; // Fallback to ID if person not found
