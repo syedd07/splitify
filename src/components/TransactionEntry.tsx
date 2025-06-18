@@ -103,65 +103,47 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddExpense = async () => {
-    // Quick validation checks first
-    if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
-      toast({
-        title: "Access Restricted",
-        description: "As a card member, you can only record your own expenses.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!amount || !description || !date || (category === 'personal' && !spentBy)) {
-      toast({
-        title: "Missing Information",
-        description: category === 'common' 
-          ? "Please fill in amount, description, and date to add a common expense."
-          : "Please fill in all fields to add an expense.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (isCardMember && category === 'common') {
-      toast({
-        title: "Access Restricted",
-        description: "As a card member, you can only record personal expenses.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setLoading(true);
     try {
+      setLoading(true);
+      
+      // Validation
+      if (!amount || !description || !date || !spentBy) {
+        toast({
+          title: "Missing Information",
+          description: "Please fill in all fields",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+
       const transaction: Omit<Transaction, 'id'> = {
         amount: parseFloat(amount),
         description,
         date,
         type: 'expense',
         category,
-        spentBy: category === 'common' ? 'common' : spentBy
+        spentBy,
+        isCommonSplit: category === 'common'
       };
 
-      // Save to database - real-time sync will handle UI updates
-      await addTransaction(transaction);
+      const id = await addTransaction(transaction);
       
-      resetForm();
+      // Clear the form
+      setAmount('');
+      setDescription('');
+      setDate('');
+      setCategory('personal');
+      
       toast({
-        title: "Expense Added",
-        description: category === 'common' 
-          ? `₹${amount} common expense for ${description} has been recorded and will be split equally.`
-          : `₹${amount} expense for ${description} has been recorded.`
+        title: "Success",
+        description: "Expense added successfully",
       });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save expense. Please try again.",
-        variant: "destructive"
-      });
+      console.error('Failed to add expense:', error);
+      // Toast is already shown in addTransaction
     } finally {
-      setLoading(false);
+      setLoading(false); // Always reset loading state
     }
   };
 

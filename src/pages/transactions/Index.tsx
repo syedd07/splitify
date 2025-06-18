@@ -27,6 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAuth } from '@/hooks/useAuth';
 
 const Index = () => {
   // Get current date info first
@@ -43,16 +44,16 @@ const Index = () => {
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
   const [people, setPeople] = useState<Person[]>([]);
   const [currentStep, setCurrentStep] = useState<'setup' | 'transactions' | 'summary'>('setup');
-  const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [showCardSelector, setShowCardSelector] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
   const [cardsLoading, setCardsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+
+  // Replace existing auth state with useAuth hook
+  const { user, userProfile, loading: authLoading } = useAuth();
 
   // Use the real-time transactions hook
   const {
@@ -73,84 +74,100 @@ const Index = () => {
   // Only show current year and past 2 years
   const years = Array.from({ length: 3 }, (_, i) => (currentYear - 2 + i).toString());
 
+  // Add step persistence
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        console.log('Initializing app...');
-        setAuthLoading(true);
+    // Load step from localStorage on initial render
+    const savedStep = localStorage.getItem('currentStep');
+    if (savedStep && (savedStep === 'setup' || savedStep === 'transactions' || savedStep === 'summary')) {
+      setCurrentStep(savedStep as 'setup' | 'transactions' | 'summary');
+    }
+  }, []);
 
-        // Load selected card from localStorage
-        const storedCard = localStorage.getItem('selectedCard');
-        if (storedCard) {
-          try {
-            setSelectedCard(JSON.parse(storedCard));
-          } catch (e) {
-            console.error('Error parsing stored card:', e);
-            localStorage.removeItem('selectedCard');
-          }
+  // Save step to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('currentStep', currentStep);
+  }, [currentStep]);
+
+  // Initialize with selected card from localStorage
+  useEffect(() => {
+    if (!selectedCard) {
+      const storedCard = localStorage.getItem('selectedCard');
+      if (storedCard) {
+        try {
+          setSelectedCard(JSON.parse(storedCard));
+        } catch (e) {
+          console.error('Error parsing stored card:', e);
+          localStorage.removeItem('selectedCard');
         }
+      }
+    }
+  }, [selectedCard]);
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log('Auth state change:', event, session?.user?.id);
-          setUser(session?.user || null);
-
-          if (session?.user) {
-            setCardsLoading(true);
-            await fetchUserProfile(session.user.id);
-            await fetchUserCards(session.user.id);
-            setCardsLoading(false);
-          } else {
-            setUserProfile(null);
-            setAvailableCards([]);
-            setCardsLoading(false);
-          }
-          setAuthLoading(false);
-        });
-
-        // Check initial session
-        const { data: { session } } = await supabase.auth.getSession();
-        // console.log('Initial session:', session?.user?.id);
-        setUser(session?.user || null);
-
-        if (session?.user) {
-          setCardsLoading(true);
-          await fetchUserProfile(session.user.id);
-          await fetchUserCards(session.user.id);
+  // Fetch cards only once when user is available
+  useEffect(() => {
+    const loadCards = async () => {
+      if (user && !availableCards.length) {
+        setCardsLoading(true);
+        try {
+          await fetchUserCards(user.id);
+        } finally {
           setCardsLoading(false);
         }
-        setAuthLoading(false);
-
-        return () => subscription.unsubscribe();
-      } catch (error) {
-        console.error('Error initializing app:', error);
-        setAuthLoading(false);
-        setCardsLoading(false);
       }
     };
 
-    initializeApp();
-  }, []);
+    loadCards();
+  }, [user, availableCards.length]);
 
-  // Clear transactions when month/year changes
+  // Add this to your Index.tsx initialization useEffect
   useEffect(() => {
-    setPeople([]);
-    setCurrentStep('setup');
-  }, [selectedMonth, selectedYear]);
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      setUserProfile(data);
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
+    const initializeData = async () => {
+     // console.log('Initializing transaction data...');
+      
+      // Load selected card from localStorage
+      const storedCard = localStorage.getItem('selectedCard');
+      if (storedCard) {
+        try {
+          const cardData = JSON.parse(storedCard);
+         // console.log('Loaded card from localStorage:', cardData);
+          setSelectedCard(cardData);
+          
+          // If we're in transactions step but people array is empty, fetch people
+          if (currentStep === 'transactions' && people.length === 0 && cardData.id) {
+            await fetchPeopleForCard(cardData.id);
+          }
+        } catch (e) {
+          console.error('Error parsing stored card:', e);
+          localStorage.removeItem('selectedCard');
+          // Redirect to onboarding if card data is invalid
+          navigate('/onboarding');
+        }
+      } else if (user) {
+        // No card selected but user is logged in - fetch their cards
+        setCardsLoading(true);
+        try {
+          await fetchUserCards(user.id);
+        } finally {
+          setCardsLoading(false);
+        }
+      }
+      
+      // Load people from localStorage
+      const savedPeople = localStorage.getItem('splitPeople');
+      if (savedPeople && people.length === 0) {
+        try {
+          setPeople(JSON.parse(savedPeople));
+        } catch (e) {
+          console.error('Error parsing saved people:', e);
+          localStorage.removeItem('splitPeople');
+        }
+      }
+    };
+    
+    if (!authLoading && user) {
+      initializeData();
     }
-  };
+  }, [authLoading, user, currentStep]);
 
   const fetchUserCards = async (userId: string) => {
     try {
@@ -163,8 +180,61 @@ const Index = () => {
       setAvailableCards(data || []);
     } catch (error) {
       console.error('Error fetching user cards:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your cards. Please try again.",
+        variant: "destructive",
+      });
     }
   };
+
+const fetchPeopleForCard = async (cardId: string) => {
+  try {
+    // @ts-ignore - Skip type checking for this complex query
+    const result = await supabase
+      .from('card_members')
+      .select('user_id')
+      .eq('card_id', cardId);
+    
+    if (result.error) throw result.error;
+    
+    // Simple type assertion
+    const memberIds = (result.data || []).map((member: any) => member.user_id);
+    
+    // Include the card owner in people
+    if (selectedCard && !memberIds.includes(selectedCard.user_id)) {
+      memberIds.push(selectedCard.user_id);
+    }
+    
+    // Get profiles
+    // @ts-ignore - Skip type checking
+    const profilesResult = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .in('id', memberIds);
+    
+    if (profilesResult.error) throw profilesResult.error;
+    const profiles = profilesResult.data;
+    
+    // Format into people array
+    const newPeople: Person[] = profiles.map(profile => ({
+      id: profile.id,
+      name: profile.full_name || profile.email,
+      isCardOwner: profile.id === selectedCard?.user_id
+    }));
+    
+    setPeople(newPeople);
+    return newPeople;
+  } catch (error) {
+    console.error('Error fetching people for card:', error);
+    toast({
+      title: "Error",
+      description: "Failed to load people for this card.",
+      variant: "destructive",
+    });
+    return [];
+  }
+};
 
   const handleCardSelect = (cardId: string) => {
     const card = availableCards.find(c => c.id === cardId);
@@ -179,10 +249,9 @@ const Index = () => {
     }
   };
 
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setUser(null);
-    setUserProfile(null);
     setPeople([]);
     setCurrentStep('setup');
     localStorage.removeItem('selectedCard');
@@ -191,6 +260,8 @@ const Index = () => {
 
   const handleStartSplitting = () => {
     if (selectedMonth && selectedYear && people.length >= 2) {
+      // Save people data to localStorage to preserve it across refreshes
+      localStorage.setItem('splitPeople', JSON.stringify(people));
       setCurrentStep('transactions');
     }
   };
@@ -619,6 +690,7 @@ const Index = () => {
                         year={selectedYear}
                       />
                     </div>
+                    
                   </div>
                 )}
               </>

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Transaction } from '@/types/BillSplitter';
@@ -239,39 +238,82 @@ export const useRealtimeTransactions = ({
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     try {
-      // console.log('Adding transaction:', transaction);
+      console.log('Adding transaction:', transaction);
 
+      // Convert month name to number
+      const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June', 
+        'July', 'August', 'September', 'October', 'November', 'December'].indexOf(selectedMonth) + 1;
+      
+      // Format date properly
+      const formattedDate = `${selectedYear}-${String(monthIndex).padStart(2, '0')}-${String(transaction.date).padStart(2, '0')}`;
+      
+      // Create transaction object with precise type conversions
       const dbTransaction = {
-        user_id: user.id,
-        credit_card_id: selectedCard.id,
-        amount: transaction.amount,
-        description: transaction.description,
-        transaction_date: `${selectedYear}-${String(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(selectedMonth) + 1).padStart(2, '0')}-${String(transaction.date).padStart(2, '0')}`,
-        transaction_type: transaction.type,
-        category: transaction.category,
-        spent_by_person_name: transaction.spentBy,
-        month: selectedMonth,
-        year: selectedYear,
-        is_common_split: transaction.isCommonSplit || false
+        user_id: user?.id,
+        credit_card_id: selectedCard?.id,
+        amount: Number(transaction.amount), // Use Number constructor for numeric type
+        description: String(transaction.description || ""), 
+        transaction_date: formattedDate,
+        transaction_type: String(transaction.type || "expense"),
+        category: String(transaction.category || "personal"),
+        spent_by_person_name: String(transaction.spentBy || ""),
+        month: String(selectedMonth),
+        year: String(selectedYear),
+        is_common_split: Boolean(transaction.isCommonSplit) // Use Boolean constructor
       };
 
-     // console.log('Inserting transaction to DB:', dbTransaction);
+      console.log('Inserting transaction to DB:', dbTransaction);
 
-      const { data, error } = await supabase
+      // CHANGE: Split the operation into insert and select
+      // First, insert without returning data
+      const insertResult = await supabase
         .from('transactions')
-        .insert(dbTransaction)
-        .select('id')
-        .single();
+        .insert([dbTransaction]);
 
-      if (error) {
-        console.error('Error inserting transaction:', error);
-        throw error;
+      if (insertResult.error) {
+        console.error('Error inserting transaction:', insertResult.error);
+        toast({
+          title: "Error",
+          description: `Failed to add transaction: ${insertResult.error.message}`,
+          variant: "destructive"
+        });
+        throw insertResult.error;
       }
 
-     // console.log('Transaction inserted successfully:', data);
-      return data.id;
+      // Then get the ID with a separate query
+      const { data: insertedData, error: fetchError } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('credit_card_id', selectedCard.id)
+        .eq('description', transaction.description)
+        .eq('transaction_date', formattedDate)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching inserted transaction ID:', fetchError);
+        // Return a temporary client-side ID as fallback
+        const tempId = crypto.randomUUID();
+        console.log('Using temporary ID:', tempId);
+        return tempId;
+      }
+
+      console.log('Transaction inserted successfully:', insertedData);
+      toast({
+        title: "Success",
+        description: "Transaction added successfully",
+      });
+    
+      return insertedData.id;
     } catch (error) {
       console.error('Error saving transaction:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save transaction. Please try again.",
+        variant: "destructive"
+      });
       throw error;
     }
   };

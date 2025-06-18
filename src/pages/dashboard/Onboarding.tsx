@@ -15,6 +15,7 @@ import {
 import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CreditCardData {
   id: string;
@@ -30,10 +31,10 @@ interface CreditCardData {
 }
 
 const Onboarding = () => {
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading } = useAuth();
   const [creditCards, setCreditCards] = useState<CreditCardData[]>([]);
   const [showAddCard, setShowAddCard] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Only for card-specific operations
   const [checkingTransactions, setCheckingTransactions] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [processingInvitation, setProcessingInvitation] = useState(false);
@@ -47,56 +48,33 @@ const Onboarding = () => {
   useEffect(() => {
     let isMounted = true;
     
-    const initializeAuth = async () => {
-    //  console.log('Initializing auth...');
+    const initialize = async () => {
       try {
-        // Get initial session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Skip auth check since we're using useAuth and ProtectedRoute
         
-        if (sessionError) {
-          console.error('Session error:', sessionError);
+        // Check if this is an invitation acceptance
+        const isInvite = searchParams.get('invite') === 'true';
+        const cardId = searchParams.get('cardId');
+        
+        if (isInvite && cardId && user) {
+          setProcessingInvitation(true);
+          await handleInvitationAcceptance(cardId, user);
           if (isMounted) {
-            navigate('/auth');
+            setProcessingInvitation(false);
           }
-          return;
         }
         
-        if (!session?.user) {
-        //  console.log('No session found, redirecting to auth');
-          if (isMounted) {
-            navigate('/auth');
-          }
-          return;
-        }
-
-       // console.log('Session found:', session.user.id);
-        if (isMounted) {
-          setUser(session.user);
-          setAuthInitialized(true);
-          
-          // Check if this is an invitation acceptance
-          const isInvite = searchParams.get('invite') === 'true';
-          const cardId = searchParams.get('cardId');
-          
-          if (isInvite && cardId) {
-            // console.log('Processing invitation for card:', cardId);
-            setProcessingInvitation(true);
-            await handleInvitationAcceptance(cardId, session.user);
-            if (isMounted) {
-              setProcessingInvitation(false);
-            }
-          }
-          
-          // Fetch credit cards
-          await fetchCreditCards(session.user);
+        // Fetch credit cards if user exists
+        if (user) {
+          await fetchCreditCards(user);
         }
       } catch (error) {
-        console.error('Error in auth initialization:', error);
+        console.error('Error in initialization:', error);
         if (isMounted) {
-          setErrorMessage('Failed to authenticate user');
+          setErrorMessage('Failed to initialize');
           toast({
             title: "Error",
-            description: "Failed to authenticate user",
+            description: "Failed to initialize",
             variant: "destructive",
           });
         }
@@ -107,30 +85,16 @@ const Onboarding = () => {
       }
     };
 
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-     // console.log('Auth state change:', event, session?.user?.id);
-      
-      if (!session?.user) {
-        if (isMounted) {
-          navigate('/auth');
-        }
-      } else if (isMounted && authInitialized) {
-        // Only refetch if auth was already initialized (prevents double fetch)
-        setUser(session.user);
-        await fetchCreditCards(session.user);
-      }
-    });
-
-    // Initialize auth
-    initializeAuth();
+    // Only initialize if not in auth loading state
+    if (!authLoading) {
+      initialize();
+    }
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
     };
-  }, [navigate, searchParams]); // Remove authInitialized from deps to prevent loops
-
+  }, [navigate, searchParams, user, authLoading]);
+  
   const handleInvitationAcceptance = async (cardId: string, currentUser: any) => {
     try {
      // console.log('Processing invitation for card:', cardId, 'user:', currentUser.email);
@@ -396,6 +360,10 @@ const Onboarding = () => {
 
   const handleCardSelect = (cardId: string) => {
     setSelectedCardId(cardId);
+    // Save the selected card to localStorage with full data
+  localStorage.setItem('selectedCard', JSON.stringify(cardId));
+  // Set the current step for transactions page
+  localStorage.setItem('currentStep', 'transactions');
   };
 
   // Mobile Menu Component
@@ -575,7 +543,7 @@ const Onboarding = () => {
           <div className="flex items-center gap-2">
             <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-              {creditCards.length > 0 ? 'Add New Credit Card' : 'Welcome to Credit Ease Divide'}
+              {creditCards.length > 0 ? 'Add New Credit Card' : 'Welcome to Splitify'}
             </h1>
           </div>
           

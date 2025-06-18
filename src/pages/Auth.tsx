@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,8 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreditCard, Loader2, Mail, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const Auth = () => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,14 +25,14 @@ const Auth = () => {
   const inviteEmail = searchParams.get('email');
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+    // If already authenticated, redirect appropriately
+    if (user) {
+      if (inviteCardId) {
+        navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
+      } else {
         navigate('/onboarding');
       }
-    };
-
-    checkAuth();
+    }
 
     // Pre-fill email if coming from invitation
     if (inviteEmail) {
@@ -50,7 +51,7 @@ const Auth = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, inviteCardId, inviteEmail]);
+  }, [navigate, inviteCardId, inviteEmail, user]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,9 +154,14 @@ const Auth = () => {
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
             <CreditCard className="w-8 h-8 text-blue-600" />
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-              Credit Ease Divide
-            </h1>
+            <div className="flex flex-col items-center">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+              Splitify
+              </h1>
+              <p className="text-[8px] mt-1 text-gray-500 font-medium tracking-wider">
+              Credit · Ease · Divide
+              </p>
+            </div>
           </div>
           {inviteCardId && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
