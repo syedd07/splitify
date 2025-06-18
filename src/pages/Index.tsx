@@ -55,11 +55,11 @@ const Index = () => {
   const isMobile = useIsMobile();
 
   // Use the real-time transactions hook
-  const { 
-    transactions, 
-    loading: loadingTransactions, 
-    addTransaction, 
-    deleteTransaction 
+  const {
+    transactions,
+    loading: loadingTransactions,
+    addTransaction,
+    deleteTransaction
   } = useRealtimeTransactions({
     selectedCard,
     selectedMonth,
@@ -76,14 +76,9 @@ const Index = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        console.log('Initializing Index page...');
-        
-        // Set a timeout to prevent infinite loading
-        const timeoutId = setTimeout(() => {
-          console.warn('Auth initialization timed out');
-          setAuthLoading(false);
-        }, 5000);
-        
+        console.log('Initializing app...');
+        setAuthLoading(true);
+
         // Load selected card from localStorage
         const storedCard = localStorage.getItem('selectedCard');
         if (storedCard) {
@@ -98,7 +93,7 @@ const Index = () => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           console.log('Auth state change:', event, session?.user?.id);
           setUser(session?.user || null);
-          
+
           if (session?.user) {
             setCardsLoading(true);
             await fetchUserProfile(session.user.id);
@@ -114,9 +109,9 @@ const Index = () => {
 
         // Check initial session
         const { data: { session } } = await supabase.auth.getSession();
-       // console.log('Initial session:', session?.user?.id);
+        // console.log('Initial session:', session?.user?.id);
         setUser(session?.user || null);
-        
+
         if (session?.user) {
           setCardsLoading(true);
           await fetchUserProfile(session.user.id);
@@ -236,7 +231,7 @@ const Index = () => {
         <div className="flex flex-col gap-4 mt-6">
           {user ? (
             <>
-              <Button 
+              <Button
                 onClick={() => navigate('/onboarding')}
                 variant="outline"
                 className="justify-start"
@@ -244,8 +239,8 @@ const Index = () => {
                 <Settings className="w-4 h-4 mr-2" />
                 Manage Cards
               </Button>
-              <Button 
-                onClick={handleSignOut} 
+              <Button
+                onClick={handleSignOut}
                 variant="outline"
                 className="justify-start"
               >
@@ -253,8 +248,8 @@ const Index = () => {
               </Button>
             </>
           ) : (
-            <Button 
-              onClick={() => navigate('/auth')} 
+            <Button
+              onClick={() => navigate('/auth')}
               variant="outline"
               className="justify-start"
             >
@@ -295,12 +290,12 @@ const Index = () => {
               </p>
             </div>
           </div>
-          
+
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-3">
             {user ? (
               <>
-                <Button 
+                <Button
                   onClick={() => navigate('/onboarding')}
                   variant="outline"
                   size="sm"
@@ -354,8 +349,8 @@ const Index = () => {
                 <p className="text-sm sm:text-base text-muted-foreground mb-4">
                   Sign up to save your credit cards and split bills with ease
                 </p>
-                <Button 
-                  onClick={() => navigate('/auth')} 
+                <Button
+                  onClick={() => navigate('/auth')}
                   className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 w-full sm:w-auto"
                 >
                   Sign Up Now
@@ -521,8 +516,8 @@ const Index = () => {
                       </CardContent>
                     </Card>
 
-                    <PersonManager 
-                      people={people} 
+                    <PersonManager
+                      people={people}
                       setPeople={setPeople}
                       cardOwnerName={userProfile?.full_name || user?.email || 'Card Owner'}
                       userProfile={userProfile}
@@ -531,7 +526,7 @@ const Index = () => {
                     />
 
                     <div className="text-center">
-                      <Button 
+                      <Button
                         onClick={handleStartSplitting}
                         disabled={!selectedMonth || !selectedYear || people.length < 2}
                         size={isMobile ? "default" : "lg"}
@@ -547,7 +542,7 @@ const Index = () => {
                 {currentStep === 'transactions' && (
                   <div className="space-y-4 sm:space-y-6">
                     <div className="flex items-center gap-4 mb-4">
-                      <Button 
+                      <Button
                         onClick={handleBackToSetup}
                         variant="outline"
                         size="sm"
@@ -558,7 +553,7 @@ const Index = () => {
                         <span className="sm:hidden">Back</span>
                       </Button>
                     </div>
-                    
+
                     <Card className="max-w-6xl mx-auto">
                       <CardHeader className="pb-3 sm:pb-6">
                         <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm sm:text-base">
@@ -570,8 +565,8 @@ const Index = () => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-3 sm:p-6">
-                        <TransactionEntry 
-                          people={people} 
+                        <TransactionEntry
+                          people={people}
                           onAddTransaction={handleAddTransaction}
                           onDeleteTransaction={handleDeleteTransaction}
                           transactions={transactions}
@@ -588,7 +583,7 @@ const Index = () => {
 
                     {transactions.length > 0 && (
                       <div className="text-center">
-                        <Button 
+                        <Button
                           onClick={handleProceedToSummary}
                           size={isMobile ? "default" : "lg"}
                           className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 w-full sm:w-auto px-6 sm:px-8"
@@ -604,7 +599,7 @@ const Index = () => {
                 {currentStep === 'summary' && (
                   <div className="space-y-4 sm:space-y-6">
                     <div className="flex items-center gap-4 mb-4">
-                      <Button 
+                      <Button
                         onClick={handleBackToTransactions}
                         variant="outline"
                         size="sm"
@@ -615,9 +610,9 @@ const Index = () => {
                         <span className="sm:hidden">Back</span>
                       </Button>
                     </div>
-                    
+
                     <div className="max-w-6xl mx-auto">
-                      <CalculationSummary 
+                      <CalculationSummary
                         people={people}
                         transactions={transactions}
                         month={selectedMonth}
