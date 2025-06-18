@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { CreditCard, Loader2, CheckCircle, AlertCircle, X, Edit2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import './CreditCardForm.css'; // We'll create this file for the styles
 
 interface CreditCardFormProps {
   onCardAdded: (card: any) => void;
@@ -29,6 +30,9 @@ const cardBrands = [
 // Card types for selection
 const cardTypes = ['Credit', 'Debit', 'Prepaid'];
 
+// Card backgrounds (1-25)
+const getRandomBackground = () => Math.floor(Math.random() * 25) + 1;
+
 const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [cardName, setCardName] = useState('');
@@ -36,8 +40,14 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [currentCardBackground] = useState(getRandomBackground());
+  const [focusElementStyle, setFocusElementStyle] = useState<any>(null);
   const { toast } = useToast();
+  
+  const cardNumberRef = useRef<HTMLLabelElement>(null);
+  const cardItemRef = useRef<HTMLDivElement>(null);
 
+  // Handle card number formatting and detection
   const formatCardNumber = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     const matches = v.match(/\d{4,16}/g);
@@ -69,6 +79,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     }
   };
 
+  // Card type identification logic
   const identifyCardType = (cardDigits: string) => {
     // Card identification patterns
     const patterns = {
@@ -114,6 +125,76 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     });
   };
 
+  // Handle focus on card number input
+  const handleCardNumberFocus = () => {
+    if (cardNumberRef.current) {
+      const rect = cardNumberRef.current.getBoundingClientRect();
+      setFocusElementStyle({
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        transform: `translateX(${rect.left - (cardItemRef.current?.getBoundingClientRect().left || 0)}px) translateY(${rect.top - (cardItemRef.current?.getBoundingClientRect().top || 0)}px)`
+      });
+    }
+  };
+
+  const handleCardNumberBlur = () => {
+    setFocusElementStyle(null);
+  };
+
+  // Get card type for the visual display
+  const getCardType = () => {
+    // First check if a brand was manually selected
+    if (cardInfo && cardInfo.brand) {
+      // Special case for RuPay - use external image
+      if (cardInfo.brand.toLowerCase() === 'rupay') {
+        return 'rupay';
+      }
+      
+      // Convert the brand name to lowercase for the image naming convention
+      const brandMap: Record<string, string> = {
+        'visa': 'visa',
+        'mastercard': 'mastercard',
+        'american express': 'amex',
+        'discover': 'discover',
+        'diners club': 'diners',
+        'jcb': 'jcb',
+        'unionpay': 'visa', // Fallback to visa icon for UnionPay
+        'other': 'visa' // Fallback to visa icon for Other
+      };
+      
+      return brandMap[cardInfo.brand.toLowerCase()] || 'visa';
+    }
+    
+    // If no manual selection, detect from card number
+    if (!cardNumber) return 'visa'; // default
+    
+    let number = cardNumber.replace(/\s+/g, '');
+    let re = new RegExp("^4");
+    if (number.match(re) != null) return "visa";
+
+    re = new RegExp("^(34|37)");
+    if (number.match(re) != null) return "amex";
+
+    re = new RegExp("^5[1-5]");
+    if (number.match(re) != null) return "mastercard";
+
+    re = new RegExp("^6011");
+    if (number.match(re) != null) return "discover";
+    
+    re = new RegExp('^9792')
+    if (number.match(re) != null) return 'troy';
+    
+    // Check for RuPay
+    re = new RegExp('^6[0-9]{15}$|^8[0-9]{15}$');
+    if (number.match(re) != null) return 'rupay';
+    
+    // Additional check for RuPay cards
+    if (number.startsWith('6')) return 'rupay';
+
+    return "visa"; // default type
+  };
+
+  // Form field handling
   const handleBrandChange = (value: string) => {
     setCardInfo({
       ...cardInfo,
@@ -136,6 +217,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     }
   };
 
+  // Form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -193,47 +275,157 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     }
   };
 
+  // Focus on card number input on mount
+  useEffect(() => {
+    const input = document.getElementById('cardNumber');
+    if (input) {
+      input.focus();
+    }
+  }, []);
+
   return (
-    <Card className="shadow-xl border-0 bg-white/90 backdrop-blur-sm">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="w-6 h-6 text-blue-600" />
-            Add Credit Card
-          </CardTitle>
-          <Button onClick={onCancel} variant="ghost" size="sm">
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Card Number Input */}
-          <div className="space-y-2">
-            <Label htmlFor="cardNumber">Card Number</Label>
-            <div className="relative">
-              <Input
-                id="cardNumber"
-                type="text"
-                placeholder="1234 5678 9012 3456"
-                value={cardNumber}
-                onChange={handleCardNumberChange}
-                maxLength={19}
-                className="text-lg font-mono tracking-wider"
-                required
+    <div className="card-form">
+      {/* Card Display */}
+      <div className="card-list">
+        <div className="card-item" ref={cardItemRef}>
+          <div className="card-item__side -front">
+            <div 
+              className={`card-item__focus ${focusElementStyle ? '-active' : ''}`} 
+              style={focusElementStyle || {}}
+            ></div>
+            <div className="card-item__cover">
+              <img
+                src={`https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/${currentCardBackground}.jpeg`} 
+                className="card-item__bg"
+                alt="Card background"
               />
             </div>
+            
+            <div className="card-item__wrapper">
+              <div className="card-item__top">
+                <img 
+                  src="https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/chip.png" 
+                  className="card-item__chip"
+                  alt="Credit card chip"
+                />
+                <div className="card-item__type">
+                  {cardNumber && (
+                    <img 
+                      src={getCardType() === 'rupay' 
+                        ? "https://upload.wikimedia.org/wikipedia/commons/c/cb/Rupay-Logo.png" 
+                        : `https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/${getCardType()}.png`
+                      }
+                      alt={getCardType()}
+                      className={`card-item__typeImg ${getCardType() === 'rupay' ? 'rupay-logo' : ''}`}
+                    />
+                  )}
+                </div>
+              </div>
+              
+              <label htmlFor="cardNumber" className="card-item__number" ref={cardNumberRef}>
+                {getCardType() === 'amex' ? (
+                  // AMEX format: XXXX XXXXXX XXXXX
+                  <>
+                    {Array.from('#### ###### #####').map((n, index) => {
+                      const isSpace = n === ' ';
+                      if (isSpace) return <span key={`s-${index}`}>&nbsp;</span>;
+                      
+                      // Fix AMEX digit calculation
+                      const digitIndex = isSpace ? -1 : index - 
+                        (index >= 5 ? 1 : 0) - 
+                        (index >= 12 ? 1 : 0);
+                      
+                      const digit = digitIndex >= 0 && digitIndex < cardNumber.replace(/\s/g, '').length 
+                        ? cardNumber.replace(/\s/g, '')[digitIndex] 
+                        : null;
+                      
+                      const isHidden = index > 4 && index < 14 && digit;
+                      
+                      return (
+                        <div 
+                          key={index} 
+                          className={`card-item__numberItem ${n === '#' ? '-active' : ''}`}
+                        >
+                          {isHidden ? '*' : digit || n}
+                        </div>
+                      );
+                    })}
+                  </>
+                ) : (
+                  // Other cards: XXXX XXXX XXXX XXXX
+                  <>
+                    {Array.from('#### #### #### ####').map((n, index) => {
+                      const isSpace = n === ' ';
+                      if (isSpace) return <span key={`s-${index}`}>&nbsp;</span>;
+                      
+                      // Improved digit calculation for regular cards
+                      const digitIndex = isSpace ? -1 : index - 
+                        (index >= 5 ? 1 : 0) - 
+                        (index >= 10 ? 1 : 0) - 
+                        (index >= 15 ? 1 : 0);
+                      
+                      const digit = digitIndex >= 0 && digitIndex < cardNumber.replace(/\s/g, '').length 
+                        ? cardNumber.replace(/\s/g, '')[digitIndex] 
+                        : null;
+                      
+                      const isHidden = index > 4 && index < 15 && digit;
+                      
+                      return (
+                        <div 
+                          key={index} 
+                          className={`card-item__numberItem ${n === '#' ? '-active' : ''}`}
+                        >
+                          {isHidden ? '*' : digit || n}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </label>
+              
+              <div className="card-item__content">
+                <label htmlFor="cardName" className="card-item__info">
+                  <div className="card-item__holder">Card Name</div>
+                  <div className="card-item__name">
+                    {cardName || "Your Card Name"}
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Card Form */}
+      <div className="card-form__inner">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Card Number Input */}
+          <div className="card-input">
+            <label htmlFor="cardNumber" className="card-input__label">Card Number</label>
+            <input
+              id="cardNumber"
+              type="text"
+              placeholder="1234 5678 9012 3456"
+              value={cardNumber}
+              onChange={handleCardNumberChange}
+              onFocus={handleCardNumberFocus}
+              onBlur={handleCardNumberBlur}
+              maxLength={19}
+              className="card-input__input"
+              required
+            />
           </div>
 
           {/* Card Name Input */}
-          <div className="space-y-2">
-            <Label htmlFor="cardName">Card Name/Nickname</Label>
-            <Input
+          <div className="card-input">
+            <label htmlFor="cardName" className="card-input__label">Card Name/Nickname</label>
+            <input
               id="cardName"
               type="text"
               placeholder="e.g., My Personal Card, Travel Card"
               value={cardName}
               onChange={(e) => setCardName(e.target.value)}
+              className="card-input__input"
               required
             />
           </div>
@@ -369,7 +561,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
             <Button
               type="submit"
               disabled={loading || !cardInfo || !isConfirmed || isEditing}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+              className="card-form__button flex-1"
             >
               {loading ? (
                 <>
@@ -389,8 +581,8 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
