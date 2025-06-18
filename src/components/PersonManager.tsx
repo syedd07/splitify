@@ -42,7 +42,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
       }
 
       try {
-        console.log('Fetching card owner profile for user_id:', selectedCard.user_id);
+        //console.log('Fetching card owner profile for user_id:', selectedCard.user_id);
         const { data: ownerProfile, error } = await supabase
           .from('profiles')
           .select('*')
@@ -54,7 +54,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
           return;
         }
 
-        console.log('Card owner profile found:', ownerProfile);
+        //console.log('Card owner profile found:', ownerProfile);
         setCardOwnerProfile(ownerProfile);
       } catch (error) {
         console.error('Error in fetchCardOwnerProfile:', error);
@@ -68,16 +68,16 @@ const PersonManager: React.FC<PersonManagerProps> = ({
   useEffect(() => {
     if (!selectedCard) return;
 
-    console.log('Initializing people array for card:', selectedCard.id);
-    console.log('Card owner profile:', cardOwnerProfile);
-    console.log('Selected card shared_emails:', selectedCard.shared_emails);
+    //console.log('Initializing people array for card:', selectedCard.id);
+   // console.log('Card owner profile:', cardOwnerProfile);
+    //console.log('Selected card shared_emails:', selectedCard.shared_emails);
 
     const newPeople: Person[] = [];
 
     // Add card owner as first person
     const ownerName = cardOwnerProfile?.full_name || cardOwnerProfile?.email || 'Card Owner';
-    console.log('Adding card owner:', ownerName, 'with ID:', selectedCard.user_id);
-    
+    //console.log('Adding card owner:', ownerName, 'with ID:', selectedCard.user_id);
+
     newPeople.push({
       id: selectedCard.user_id, // Use actual user_id as the ID
       name: ownerName,
@@ -87,7 +87,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
     // Add shared emails as additional people
     if (selectedCard.shared_emails && Array.isArray(selectedCard.shared_emails)) {
       selectedCard.shared_emails.forEach((email: string, index: number) => {
-        console.log('Adding shared email:', email, 'with ID:', `shared-${index}`);
+       // console.log('Adding shared email:', email, 'with ID:', `shared-${index}`);
         newPeople.push({
           id: `shared-${index}`, // Keep the shared-X format for shared emails
           name: email,
@@ -96,7 +96,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
       });
     }
 
-    console.log('Setting people array:', newPeople);
+    //console.log('Setting people array:', newPeople);
     setPeople(newPeople);
   }, [selectedCard, cardOwnerProfile, setPeople]);
 
@@ -108,7 +108,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         isCardOwner: false
       };
       
-      console.log('Adding new person:', newPerson);
+     // console.log('Adding new person:', newPerson);
       setPeople([...people, newPerson]);
       setNewPersonName('');
       

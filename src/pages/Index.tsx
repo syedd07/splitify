@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -77,9 +76,14 @@ const Index = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        console.log('Initializing app...');
-        setAuthLoading(true);
-
+        console.log('Initializing Index page...');
+        
+        // Set a timeout to prevent infinite loading
+        const timeoutId = setTimeout(() => {
+          console.warn('Auth initialization timed out');
+          setAuthLoading(false);
+        }, 5000);
+        
         // Load selected card from localStorage
         const storedCard = localStorage.getItem('selectedCard');
         if (storedCard) {
@@ -110,7 +114,7 @@ const Index = () => {
 
         // Check initial session
         const { data: { session } } = await supabase.auth.getSession();
-        console.log('Initial session:', session?.user?.id);
+       // console.log('Initial session:', session?.user?.id);
         setUser(session?.user || null);
         
         if (session?.user) {

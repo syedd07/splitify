@@ -79,7 +79,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           throw new Error('Binlist API failed or rate limited');
         }
       } catch (error) {
-        console.log('Binlist API failed, using fallback:', error);
+        //console.log('Binlist API failed, using fallback:', error);
         // Enhanced fallback with more realistic data based on common Indian BIN ranges
         const bankMappings = {
           '4': ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank'],

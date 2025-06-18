@@ -71,7 +71,7 @@ const Auth = () => {
         ? `${window.location.origin}/onboarding?invite=true&cardId=${inviteCardId}`
         : `${window.location.origin}/onboarding`;
 
-      console.log('Signing up user with:', { email, fullName, inviteCardId });
+     // console.log('Signing up user with:', { email, fullName, inviteCardId });
 
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -89,7 +89,7 @@ const Auth = () => {
         throw error;
       }
 
-      console.log('Signup successful:', data);
+    //  console.log('Signup successful:', data);
 
       // If user is immediately confirmed (no email confirmation required)
       if (data.user && !data.user.email_confirmed_at) {
@@ -120,7 +120,7 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      console.log('Attempting to sign in with:', email);
+    //  console.log('Attempting to sign in with:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -132,7 +132,7 @@ const Auth = () => {
         throw error;
       }
 
-      console.log('Sign in successful:', data);
+     // console.log('Sign in successful:', data);
 
       // Navigation will be handled by the auth state change listener
     } catch (error: any) {

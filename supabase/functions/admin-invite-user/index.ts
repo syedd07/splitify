@@ -2,6 +2,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
+// Add Deno namespace declaration for TypeScript
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -22,7 +29,7 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    console.log('Starting admin invite user function...');
+   // console.log('Starting admin invite user function...');
 
     // Create admin client with service role key
     const supabaseAdmin = createClient(
@@ -56,7 +63,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { cardId, cardName, invitedEmail, inviterName }: InviteUserRequest = await req.json();
 
-    console.log('Processing invitation request:', { cardId, cardName, invitedEmail, inviterName });
+   // console.log('Processing invitation request:', { cardId, cardName, invitedEmail, inviterName });
 
     // Check if user is already invited or a member
     const { data: existingInvite } = await supabase
@@ -124,7 +131,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(invitedEmail.toLowerCase());
     
     if (existingUser.user) {
-      console.log('User already exists, adding as member directly');
+    //  console.log('User already exists, adding as member directly');
       
       // Add user as member directly since they already have an account
       const { error: memberError } = await supabaseAdmin
@@ -209,7 +216,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log('Invitation email sent successfully via Supabase admin');
+   // console.log('Invitation email sent successfully via Supabase admin');
 
     return new Response(
       JSON.stringify({ 

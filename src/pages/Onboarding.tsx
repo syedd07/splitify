@@ -48,7 +48,7 @@ const Onboarding = () => {
     let isMounted = true;
     
     const initializeAuth = async () => {
-      console.log('Initializing auth...');
+    //  console.log('Initializing auth...');
       try {
         // Get initial session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -62,14 +62,14 @@ const Onboarding = () => {
         }
         
         if (!session?.user) {
-          console.log('No session found, redirecting to auth');
+        //  console.log('No session found, redirecting to auth');
           if (isMounted) {
             navigate('/auth');
           }
           return;
         }
-        
-        console.log('Session found:', session.user.id);
+
+       // console.log('Session found:', session.user.id);
         if (isMounted) {
           setUser(session.user);
           setAuthInitialized(true);
@@ -79,7 +79,7 @@ const Onboarding = () => {
           const cardId = searchParams.get('cardId');
           
           if (isInvite && cardId) {
-            console.log('Processing invitation for card:', cardId);
+            // console.log('Processing invitation for card:', cardId);
             setProcessingInvitation(true);
             await handleInvitationAcceptance(cardId, session.user);
             if (isMounted) {
@@ -109,7 +109,7 @@ const Onboarding = () => {
 
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state change:', event, session?.user?.id);
+     // console.log('Auth state change:', event, session?.user?.id);
       
       if (!session?.user) {
         if (isMounted) {
@@ -133,7 +133,7 @@ const Onboarding = () => {
 
   const handleInvitationAcceptance = async (cardId: string, currentUser: any) => {
     try {
-      console.log('Processing invitation for card:', cardId, 'user:', currentUser.email);
+     // console.log('Processing invitation for card:', cardId, 'user:', currentUser.email);
       
       // Check if user already has a profile
       const { data: existingProfile, error: profileError } = await supabase
@@ -148,7 +148,7 @@ const Onboarding = () => {
 
       // If no profile exists, create one
       if (!existingProfile) {
-        console.log('Creating profile for invited user');
+       // console.log('Creating profile for invited user');
         const { error: createProfileError } = await supabase
           .from('profiles')
           .insert({
@@ -177,7 +177,7 @@ const Onboarding = () => {
       }
 
       if (invitation) {
-        console.log('Found invitation:', invitation.id);
+      //  console.log('Found invitation:', invitation.id);
         
         // Get the card and add the user's email to shared_emails
         const { data: cardData, error: cardError } = await supabase
@@ -215,7 +215,7 @@ const Onboarding = () => {
             return;
           }
 
-          console.log('User email added to card shared_emails');
+        //  console.log('User email added to card shared_emails');
         }
 
         // Update invitation status to accepted
@@ -231,7 +231,7 @@ const Onboarding = () => {
         if (updateError) {
           console.error('Error updating invitation:', updateError);
         } else {
-          console.log('Invitation status updated to accepted');
+        //  console.log('Invitation status updated to accepted');
         }
 
         toast({
@@ -242,7 +242,7 @@ const Onboarding = () => {
         // Clear the URL parameters
         navigate('/onboarding', { replace: true });
       } else {
-        console.log('No pending invitation found for this user and card');
+      //  console.log('No pending invitation found for this user and card');
       }
     } catch (error) {
       console.error('Error processing invitation:', error);
@@ -258,11 +258,11 @@ const Onboarding = () => {
     try {
       const userToUse = currentUser || user;
       if (!userToUse?.id) {
-        console.log('No user available for fetching credit cards');
+      //  console.log('No user available for fetching credit cards');
         return;
       }
 
-      console.log('Fetching credit cards for user:', userToUse.id, 'email:', userToUse.email);
+      // console.log('Fetching credit cards for user:', userToUse.id, 'email:', userToUse.email);
 
       // Fetch all cards the user has access to (owned + shared via email)
       const { data: allCards, error } = await supabase
@@ -275,7 +275,7 @@ const Onboarding = () => {
         throw error;
       }
       
-      console.log('Fetched cards:', allCards || []);
+    //  console.log('Fetched cards:', allCards || []);
 
       // Transform cards and determine roles
       const cardsWithRoles: CreditCardData[] = (allCards || []).map((card, index) => {
@@ -295,7 +295,7 @@ const Onboarding = () => {
         };
       });
 
-      console.log('Cards with roles:', cardsWithRoles);
+    //  console.log('Cards with roles:', cardsWithRoles);
       setCreditCards(cardsWithRoles);
       
       // Set first card as selected if none selected and we have cards

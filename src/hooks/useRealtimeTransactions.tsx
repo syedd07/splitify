@@ -37,8 +37,8 @@ export const useRealtimeTransactions = ({
 
     try {
       setLoading(true);
-      console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
-      console.log('Current user:', user.id, user.email);
+    //  console.log('Loading transactions for card:', selectedCard.id, 'month:', selectedMonth, 'year:', selectedYear);
+    //  console.log('Current user:', user.id, user.email);
       
       // Query all transactions for this card - RLS policies will handle access control
       const { data: dbTransactions, error } = await supabase
@@ -60,18 +60,18 @@ export const useRealtimeTransactions = ({
         return;
       }
 
-      console.log('Raw DB query result:', dbTransactions);
-      console.log('Number of transactions loaded from DB:', dbTransactions?.length || 0);
+    //  console.log('Raw DB query result:', dbTransactions);
+    //  console.log('Number of transactions loaded from DB:', dbTransactions?.length || 0);
 
       if (dbTransactions && dbTransactions.length > 0) {
-        console.log('First transaction details:', dbTransactions[0]);
-        console.log('All transaction spent_by values:', dbTransactions.map(t => t.spent_by_person_name));
+      //  console.log('First transaction details:', dbTransactions[0]);
+       // console.log('All transaction spent_by values:', dbTransactions.map(t => t.spent_by_person_name));
       }
 
       // Convert database transactions to local format
       const localTransactions: Transaction[] = (dbTransactions || []).map(dbTransaction => {
-        console.log('Converting transaction:', dbTransaction.id, 'spent_by:', dbTransaction.spent_by_person_name);
-        
+        //console.log('Converting transaction:', dbTransaction.id, 'spent_by:', dbTransaction.spent_by_person_name);
+
         return {
           id: dbTransaction.id,
           amount: parseFloat(dbTransaction.amount.toString()),
@@ -84,8 +84,8 @@ export const useRealtimeTransactions = ({
         };
       });
 
-      console.log('Converted local transactions:', localTransactions);
-      console.log('Local transactions count:', localTransactions.length);
+     // console.log('Converted local transactions:', localTransactions);
+     // console.log('Local transactions count:', localTransactions.length);
       
       setTransactions(localTransactions);
     } catch (error) {
@@ -129,7 +129,7 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('Real-time INSERT received:', payload);
+        //  console.log('Real-time INSERT received:', payload);
           const newTransaction = payload.new;
           
           // Only add if it matches current month/year
@@ -148,10 +148,10 @@ export const useRealtimeTransactions = ({
             setTransactions(prev => {
               // Check if transaction already exists to avoid duplicates
               if (prev.some(t => t.id === localTransaction.id)) {
-                console.log('Transaction already exists, skipping duplicate');
+               // console.log('Transaction already exists, skipping duplicate');
                 return prev;
               }
-              console.log('Adding new transaction to state:', localTransaction);
+              // console.log('Adding new transaction to state:', localTransaction);
               return [localTransaction, ...prev];
             });
 
@@ -172,7 +172,7 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('Real-time DELETE received:', payload);
+        //  console.log('Real-time DELETE received:', payload);
           const deletedTransaction = payload.old;
           
           setTransactions(prev => prev.filter(t => t.id !== deletedTransaction.id));
@@ -193,7 +193,7 @@ export const useRealtimeTransactions = ({
           filter: `credit_card_id=eq.${selectedCard.id}`
         },
         (payload) => {
-          console.log('Real-time UPDATE received:', payload);
+         // console.log('Real-time UPDATE received:', payload);
           const updatedTransaction = payload.new;
           
           // Only update if it matches current month/year
@@ -220,11 +220,11 @@ export const useRealtimeTransactions = ({
         }
       )
       .subscribe((status) => {
-        console.log('Real-time subscription status:', status);
+       // console.log('Real-time subscription status:', status);
       });
 
     return () => {
-      console.log('Cleaning up real-time subscription');
+      // console.log('Cleaning up real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [selectedCard?.id, selectedMonth, selectedYear, user?.id]);
@@ -232,15 +232,15 @@ export const useRealtimeTransactions = ({
   // Reload when month/year changes
   useEffect(() => {
     if (selectedCard && user) {
-      console.log('Month/Year changed, reloading transactions...');
+      // console.log('Month/Year changed, reloading transactions...');
       loadTransactions();
     }
   }, [selectedMonth, selectedYear]);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     try {
-      console.log('Adding transaction:', transaction);
-      
+      // console.log('Adding transaction:', transaction);
+
       const dbTransaction = {
         user_id: user.id,
         credit_card_id: selectedCard.id,
@@ -255,7 +255,7 @@ export const useRealtimeTransactions = ({
         is_common_split: transaction.isCommonSplit || false
       };
 
-      console.log('Inserting transaction to DB:', dbTransaction);
+     // console.log('Inserting transaction to DB:', dbTransaction);
 
       const { data, error } = await supabase
         .from('transactions')
@@ -267,8 +267,8 @@ export const useRealtimeTransactions = ({
         console.error('Error inserting transaction:', error);
         throw error;
       }
-      
-      console.log('Transaction inserted successfully:', data);
+
+     // console.log('Transaction inserted successfully:', data);
       return data.id;
     } catch (error) {
       console.error('Error saving transaction:', error);
@@ -278,7 +278,7 @@ export const useRealtimeTransactions = ({
 
   const deleteTransaction = async (transactionId: string) => {
     try {
-      console.log('Deleting transaction:', transactionId);
+      // console.log('Deleting transaction:', transactionId);
       
       const { error } = await supabase
         .from('transactions')
@@ -289,8 +289,8 @@ export const useRealtimeTransactions = ({
         console.error('Error deleting transaction:', error);
         throw error;
       }
-      
-      console.log('Transaction deleted successfully');
+
+      // console.log('Transaction deleted successfully');
     } catch (error) {
       console.error('Error deleting transaction:', error);
       throw error;
