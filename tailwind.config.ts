@@ -18,6 +18,12 @@ export default {
 			}
 		},
 		extend: {
+			animation: {
+				'attention-grabber': 'shake 0.8s cubic-bezier(.36,.07,.19,.97) both, pulse 2s infinite 1s',
+				'dialog-content': 'scaleIn 0.3s ease-out forwards',
+				'accordion-down': 'accordion-down 0.2s ease-out',
+				'accordion-up': 'accordion-up 0.2s ease-out'
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -84,12 +90,30 @@ export default {
 					to: {
 						height: '0'
 					}
-				}
+				},
+				shake: {
+					'0%': { transform: 'translateX(0)' },
+					'10%': { transform: 'translateX(-5px)' },
+					'20%': { transform: 'translateX(5px)' },
+					'30%': { transform: 'translateX(-4px)' },
+					'40%': { transform: 'translateX(4px)' },
+					'50%': { transform: 'translateX(-3px)' },
+					'60%': { transform: 'translateX(3px)' },
+					'70%': { transform: 'translateX(-2px)' },
+					'80%': { transform: 'translateX(2px)' },
+					'90%': { transform: 'translateX(-1px)' },
+					'100%': { transform: 'translateX(0)' },
+				},
+				scaleIn: {
+					'0%': { transform: 'scale(0.9)', opacity: '0' },
+					'100%': { transform: 'scale(1)', opacity: '1' },
+				},
+				pulse: {
+					'0%': { boxShadow: '0 0 0 0 rgba(37, 99, 235, 0.4)' },
+					'70%': { boxShadow: '0 0 0 15px rgba(37, 99, 235, 0)' },
+					'100%': { boxShadow: '0 0 0 0 rgba(37, 99, 235, 0)' },
+				},
 			},
-			animation: {
-				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
-			}
 		}
 	},
 	plugins: [require("tailwindcss-animate")],
