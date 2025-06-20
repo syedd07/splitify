@@ -87,7 +87,14 @@ const Auth = () => {
       // Always prioritize email verification for invitations
       const redirectUrl = `${window.location.origin}/auth/callback${inviteCardId ? `?invite=${inviteCardId}` : ''}`;
 
-      // First, add the full name to metadata AND user data
+      // Log the signup attempt for debugging
+      console.log("Attempting signup with:", { 
+        email: email.trim().toLowerCase(),
+        fullName: fullName.trim(),
+        redirectUrl 
+      });
+
+      // First, add the full name to metadata AND user data - use multiple fields to ensure capture
       const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -95,43 +102,46 @@ const Auth = () => {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName.trim(),
-            display_name: fullName.trim(), // Add both versions to ensure it's captured
+            name: fullName.trim(),
+            display_name: fullName.trim()
           }
         }
       });
 
       if (error) throw error;
 
-      // Log user data for debugging
-      console.log("User signup data:", data.user);
+      // Log success
+      console.log("User signup successful:", {
+        userId: data.user?.id,
+        email: data.user?.email,
+        metadata: data.user?.user_metadata
+      });
 
-      // Important: Ensure the user exists before proceeding
+      // Wait a moment to ensure the auth record is fully created
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Important: Ensure the user exists before proceeding with profile creation
       if (data.user && data.user.id) {
-        // Create profile record with full name - AFTER successful user creation
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: data.user.id,
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'id' });
-          
-        if (profileError) {
-          console.error('Error updating profile:', profileError);
-          // Try again with insert if upsert fails
-          const { error: insertError } = await supabase
+        try {
+          // Create profile record with full name - AFTER successful user creation
+          const { error: profileError } = await supabase
             .from('profiles')
-            .insert({
+            .upsert({
               id: data.user.id,
               full_name: fullName.trim(),
               email: email.trim().toLowerCase(),
               updated_at: new Date().toISOString(),
-            });
+            }, { onConflict: 'id' });
             
-          if (insertError) {
-            console.error('Error inserting profile:', insertError);
+          if (profileError) {
+            console.error('Error updating profile:', profileError);
+            throw profileError;
           }
+          
+          console.log("Profile created/updated successfully");
+        } catch (profileError) {
+          console.error("Profile creation error:", profileError);
+          // Continue despite profile error - we can fix it later
         }
       }
 
@@ -183,40 +193,41 @@ const Auth = () => {
       if (error) {
         console.error('Sign in error:', error);
         
-        // Check if this user exists but has auth issues
-        if (error.message.includes('Invalid login credentials')) {
-          // Try checking for a user with this email in the profiles table
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-            
-          if (!profileError && profileData) {
-            // User exists in profiles but can't log in - likely an auth issue
-            toast({
-              title: "Account Issue",
-              description: "Your account exists but there may be an issue with your password. Try resetting it.",
-              action: (
-                <Button variant="outline" size="sm" onClick={() => handlePasswordReset()}>
-                  Reset Password
-                </Button>
-              ),
-              duration: 10000, // Show for 10 seconds
-            });
-            
-            // Also suggest email verification might be incomplete
-            toast({
-              title: "Email Verification",
-              description: "Make sure you've verified your email address by clicking the link we sent you.",
-              duration: 8000,
-            });
-          } else {
-            // User doesn't exist in profiles - standard error
-            throw error;
-          }
+        // Get detailed information about this user to help debug
+        const { data: authUser, error: authError } = await supabase.auth.admin
+          .getUserById(cleanEmail)
+          .catch(() => ({ data: null, error: null }));
+          
+        console.log('Auth user lookup result:', { authUser, authError });
+        
+        // Check if this user exists in profiles but can't log in
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+          
+        console.log('Profile lookup result:', profileData);
+        
+        if (profileData) {
+          // User exists in profiles but can't log in - likely an auth issue
+          toast({
+            title: "Account Issue",
+            description: "Your account exists but there may be an issue with your password. Try resetting it.",
+            action: (
+              <Button variant="outline" size="sm" onClick={() => handlePasswordReset()}>
+                Reset Password
+              </Button>
+            ),
+            duration: 10000, // Show for 10 seconds
+          });
         } else {
-          throw error;
+          // Standard error
+          toast({
+            title: "Login Failed",
+            description: "Invalid email or password. Please check your credentials and try again.",
+            variant: "destructive",
+          });
         }
       } else {
         // Success! Update the user profile if needed
@@ -224,21 +235,37 @@ const Auth = () => {
           // Check if user has profile info
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
-            .select('full_name')
+            .select('id, full_name, email')
             .eq('id', data.user.id)
             .maybeSingle();
             
-          if (!profileError && profileData && !profileData.full_name && data.user.user_metadata?.full_name) {
-            // Update the profile with the metadata if missing
-            await supabase
+          console.log('Profile after login:', profileData);
+            
+          if (!profileError && (!profileData || !profileData.full_name) && 
+              (data.user.user_metadata?.full_name || data.user.user_metadata?.name)) {
+            // Create or update the profile with the metadata
+            const { error: updateError } = await supabase
               .from('profiles')
-              .update({ 
-                full_name: data.user.user_metadata.full_name,
+              .upsert({ 
+                id: data.user.id,
+                full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name,
+                email: data.user.email,
                 updated_at: new Date().toISOString()
-              })
-              .eq('id', data.user.id);
+              });
+              
+            if (updateError) {
+              console.error('Error updating profile during login:', updateError);
+            } else {
+              console.log('Profile updated during login');
+            }
           }
         }
+        
+        // Successful login toast
+        toast({
+          title: "Welcome back!",
+          description: "You've been successfully logged in.",
+        });
       }
     } catch (error: any) {
       console.error('Sign in error:', error);
@@ -355,6 +382,41 @@ const Auth = () => {
     );
   };
 
+  // Add this function to repair existing invited users
+  const repairInvitedUser = async () => {
+    if (!email.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // This will force a password reset to fix authentication issues
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/profile?reset=true`,
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Account repair initiated",
+        description: "Check your email to reset your password and fix your account",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -422,6 +484,15 @@ const Auth = () => {
                     'Sign In'
                   )}
                 </Button>
+                <div className="text-center mt-4">
+                  <Button 
+                    variant="link" 
+                    onClick={handlePasswordReset}
+                    className="text-sm text-blue-600"
+                  >
+                    Trouble logging in? Reset your password
+                  </Button>
+                </div>
               </form>
             </TabsContent>
             

@@ -11,6 +11,54 @@ const AuthCallback = () => {
   const [processing, setProcessing] = useState(true);
   const { toast } = useToast();
 
+  // Add this function to properly sync profile data
+  const syncUserProfile = async (user) => {
+    if (!user) return;
+    
+    try {
+      // First check if profile exists
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+        
+      // Get user metadata for name
+      const fullName = user.user_metadata?.full_name || 
+                      user.user_metadata?.name || 
+                      user.user_metadata?.display_name;
+      
+      if (!existingProfile) {
+        // Create profile if doesn't exist
+        await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            full_name: fullName,
+            email: user.email,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          
+        console.log("Created new profile for user");
+      } 
+      else if (!existingProfile.full_name && fullName) {
+        // Update profile if name is missing
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: fullName,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+          
+        console.log("Updated existing profile with name");
+      }
+    } catch (error) {
+      console.error("Error syncing user profile:", error);
+    }
+  };
+
   useEffect(() => {
     const handleEmailVerificationCallback = async () => {
       try {
@@ -30,6 +78,9 @@ const AuthCallback = () => {
         if (data.session && data.session.user) {
           const user = data.session.user;
           console.log("User authenticated:", user.id);
+          
+          // Always sync profile first - this is crucial for login to work later
+          await syncUserProfile(user);
           
           // Handle invitation if there is one
           if (inviteCardId) {
