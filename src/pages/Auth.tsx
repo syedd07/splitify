@@ -82,19 +82,13 @@ const Auth = () => {
     }
 
     setLoading(true);
-
+    
     try {
-      // Always prioritize email verification for invitations
+      // For invited users, use the invitation flow
       const redirectUrl = `${window.location.origin}/auth/callback${inviteCardId ? `?invite=${inviteCardId}` : ''}`;
+      
+      console.log("Starting signup with email:", email);
 
-      // Log the signup attempt for debugging
-      console.log("Attempting signup with:", { 
-        email: email.trim().toLowerCase(),
-        fullName: fullName.trim(),
-        redirectUrl 
-      });
-
-      // First, add the full name to metadata AND user data - use multiple fields to ensure capture
       const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -102,68 +96,30 @@ const Auth = () => {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName.trim(),
-            name: fullName.trim(),
-            display_name: fullName.trim()
+            invitation_type: inviteCardId ? 'card_invitation' : undefined,
+            card_id: inviteCardId || undefined
           }
         }
       });
 
       if (error) throw error;
-
-      // Log success
-      console.log("User signup successful:", {
-        userId: data.user?.id,
-        email: data.user?.email,
-        metadata: data.user?.user_metadata
-      });
-
-      // Wait a moment to ensure the auth record is fully created
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Important: Ensure the user exists before proceeding with profile creation
-      if (data.user && data.user.id) {
-        try {
-          // Create profile record with full name - AFTER successful user creation
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              full_name: fullName.trim(),
-              email: email.trim().toLowerCase(),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'id' });
-            
-          if (profileError) {
-            console.error('Error updating profile:', profileError);
-            throw profileError;
-          }
-          
-          console.log("Profile created/updated successfully");
-        } catch (profileError) {
-          console.error("Profile creation error:", profileError);
-          // Continue despite profile error - we can fix it later
-        }
-      }
-
-      // Show appropriate message for invited users
+      
+      // Show success message but don't try to create a profile here
+      // The profile will be created by the database trigger after email verification
+      
       if (inviteCardId) {
         toast({
-          title: "Just one more step!",
-          description: "Please check your email and verify your account to access the shared card.",
+          title: "Invitation accepted!",
+          description: "Please check your email to verify your account.",
         });
-      } else if (data.user && !data.user.email_confirmed_at) {
+      } else {
         toast({
-          title: "Success!",
-          description: "Check your email for the confirmation link.",
-        });
-      } else if (data.user && data.user.email_confirmed_at) {
-        toast({
-          title: "Success!",
-          description: "Account created successfully.",
+          title: "Account created!",
+          description: "Please check your email for the confirmation link.",
         });
       }
     } catch (error: any) {
-      console.error('Signup error:', error);
+      console.error("Signup error:", error);
       toast({
         title: "Error",
         description: error.message,
@@ -265,6 +221,7 @@ const Auth = () => {
         toast({
           title: "Welcome back!",
           description: "You've been successfully logged in.",
+          duration: 3000, // Show for 3 seconds
         });
       }
     } catch (error: any) {
