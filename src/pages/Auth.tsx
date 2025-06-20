@@ -72,8 +72,7 @@ const Auth = () => {
         ? `${window.location.origin}/onboarding?invite=true&cardId=${inviteCardId}`
         : `${window.location.origin}/onboarding`;
 
-     // console.log('Signing up user with:', { email, fullName, inviteCardId });
-
+      // Fix: Make sure full_name is set in both user metadata AND user data
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -81,16 +80,27 @@ const Auth = () => {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName.trim(),
+            name: fullName.trim(), // Add this for display name
           }
         }
       });
 
-      if (error) {
-        console.error('Signup error:', error);
-        throw error;
+      // Also immediately update the profile record
+      if (data.user && !error) {
+        // Create profile record with full name
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            email: email.trim(),
+            updated_at: new Date().toISOString(),
+          });
+          
+        if (profileError) {
+          console.error('Error updating profile:', profileError);
+        }
       }
-
-    //  console.log('Signup successful:', data);
 
       // If user is immediately confirmed (no email confirmation required)
       if (data.user && !data.user.email_confirmed_at) {
@@ -121,23 +131,81 @@ const Auth = () => {
     setLoading(true);
 
     try {
-    //  console.log('Attempting to sign in with:', email);
+      // Clean the email input to avoid whitespace issues
+      const cleanEmail = email.trim().toLowerCase();
+      
+      console.log('Attempting to sign in with:', cleanEmail);
       
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
       });
 
       if (error) {
         console.error('Sign in error:', error);
+        
+        // If the error is about invalid credentials, try to provide a more helpful message
+        if (error.message.includes('Invalid login credentials')) {
+          // Check if user exists but has auth issues
+          const { count, error: countError } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('email', cleanEmail);
+            
+          if (!countError && count && count > 0) {
+            throw new Error('Your account exists but may not be fully activated. Try resetting your password.');
+          }
+        }
+        
         throw error;
       }
-
-     // console.log('Sign in successful:', data);
 
       // Navigation will be handled by the auth state change listener
     } catch (error: any) {
       console.error('Sign in error:', error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+      
+      // Add a password reset option if it seems to be an account issue
+      if (error.message.includes('account exists')) {
+        toast({
+          title: "Need to reset your password?",
+          description: "Click here to reset your password",
+          action: <Button variant="outline" size="sm" onClick={() => handlePasswordReset()}>Reset</Button>,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add this function to handle password reset
+  const handlePasswordReset = async () => {
+    if (!email.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/profile?reset=true`,
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Password reset email sent",
+        description: "Check your email for a password reset link",
+      });
+    } catch (error: any) {
       toast({
         title: "Error",
         description: error.message,
@@ -176,7 +244,7 @@ const Auth = () => {
           )}
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="signin" className="w-full">
+          <Tabs defaultValue={inviteCardId ? "signup" : "signin"} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>

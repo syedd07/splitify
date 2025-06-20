@@ -1,4 +1,3 @@
-// src/hooks/useAuth.tsx
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -17,6 +16,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let subscription: any = null;
+    
     const fetchUserProfile = async (userId: string) => {
       try {
         const { data, error } = await supabase
@@ -45,7 +46,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         // Set up listener for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        const authSubscription = supabase.auth.onAuthStateChange(
           async (event, session) => {
             setUser(session?.user || null);
             
@@ -58,13 +59,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         );
         
-        return () => subscription.unsubscribe();
+        subscription = authSubscription.data.subscription;
       } finally {
         setLoading(false);
       }
     };
     
     setupAuth();
+    
+    // Proper cleanup function
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
   
   const signOut = async () => {

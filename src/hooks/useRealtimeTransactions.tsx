@@ -10,7 +10,7 @@ interface UseRealtimeTransactionsProps {
   user: any;
 }
 
-export const useRealtimeTransactions = ({
+export const  useRealtimeTransactions = ({
   selectedCard,
   selectedMonth,
   selectedYear,

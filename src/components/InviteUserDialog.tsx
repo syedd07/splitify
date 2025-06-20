@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -32,6 +31,18 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
 
+  // Add an abort controller for API calls
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   const handleInvite = async () => {
     if (!email.trim()) {
       toast({
@@ -52,7 +63,29 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       return;
     }
 
+    // Create new abort controller
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setIsLoading(true);
+    
+    // Add a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        toast({
+          title: "Operation timed out",
+          description: "The invitation process took too long. Please try again.",
+          variant: "destructive",
+        });
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      }
+    }, 15000); // 15 second timeout
+    
     try {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -70,6 +103,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: "You cannot invite yourself",
           variant: "destructive",
         });
+        setIsLoading(false);
         return;
       }
 
@@ -91,6 +125,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: "Only card owners can send invitations",
           variant: "destructive",
         });
+        setIsLoading(false);
         return;
       }
 
@@ -106,41 +141,58 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: "This email already has access to the card",
           variant: "destructive",
         });
+        setIsLoading(false);
         return;
       }
 
-      // Add email to shared_emails
-      const updatedSharedEmails = [...currentSharedEmails, inviteEmail];
-      
-      const { error: updateError } = await supabase
-        .from('credit_cards')
-        .update({ shared_emails: updatedSharedEmails })
-        .eq('id', cardId);
+      // Get user profile to get inviter's name
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+        
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        // Continue with null name if profile fetch fails
+      }
+        
+      const inviterName = profileData?.full_name || user.email?.split('@')[0] || 'A Splitify user';
 
-      if (updateError) {
-        throw updateError;
+      // Call the admin-invite-user Edge Function to handle both DB updates and email sending
+      const { data: inviteData, error: inviteFunctionError } = await supabase.functions.invoke(
+        'admin-invite-user',
+        {
+          body: {
+            cardId: cardId,
+            cardName: cardName,
+            invitedEmail: inviteEmail,
+            inviterName: inviterName
+          }
+        }
+      );
+
+      if (inviteFunctionError) {
+        throw inviteFunctionError;
       }
 
-      // Create invitation record
-      const { error: inviteError } = await supabase
-        .from('card_invitations')
-        .insert({
-          credit_card_id: cardId,
-          inviter_user_id: user.id,
-          invited_email: inviteEmail,
-          status: 'pending'
+      // Show appropriate message based on the function response
+      if (inviteData?.warning) {
+        toast({
+          title: "Invitation Created",
+          description: inviteData.message || "User has been invited but there may be issues with email delivery",
+          
         });
-
-      if (inviteError) {
-        console.error('Error creating invitation record:', inviteError);
-        // Don't fail the whole process if invitation record fails
+      } else {
+        toast({
+          title: "Invitation Sent!",
+          description: inviteData?.message || `${inviteEmail} has been invited to access ${cardName}`,
+        });
       }
 
-      toast({
-        title: "Invitation sent!",
-        description: `${inviteEmail} can now access ${cardName} when they log in`,
-      });
-
+      // Clear the timeout on success
+      clearTimeout(timeoutId);
+      
       setEmail('');
       setIsOpen(false);
     } catch (error: any) {
@@ -151,12 +203,23 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         variant: "destructive",
       });
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
-
+  
+  // Also modify your Dialog component to reset state when closed
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open && isLoading) {
+        // Cancel any pending operations when dialog is closed
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        setIsLoading(false);
+      }
+      setIsOpen(open);
+    }}>
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>

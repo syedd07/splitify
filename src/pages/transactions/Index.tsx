@@ -105,136 +105,149 @@ const Index = () => {
 
   // Fetch cards only once when user is available
   useEffect(() => {
+    let isMounted = true;
+
     const loadCards = async () => {
-      if (user && !availableCards.length) {
-        setCardsLoading(true);
-        try {
-          await fetchUserCards(user.id);
-        } finally {
+      if (!user) return;
+
+      setCardsLoading(true);
+      try {
+        await fetchUserCards(user.id);
+      } finally {
+        if (isMounted) {
           setCardsLoading(false);
         }
       }
     };
 
     loadCards();
-  }, [user, availableCards.length]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Add this to your Index.tsx initialization useEffect
   useEffect(() => {
-    const initializeData = async () => {
-     // console.log('Initializing transaction data...');
-      
-      // Load selected card from localStorage
-      const storedCard = localStorage.getItem('selectedCard');
-      if (storedCard) {
-        try {
-          const cardData = JSON.parse(storedCard);
-         // console.log('Loaded card from localStorage:', cardData);
-          setSelectedCard(cardData);
-          
-          // If we're in transactions step but people array is empty, fetch people
-          if (currentStep === 'transactions' && people.length === 0 && cardData.id) {
-            await fetchPeopleForCard(cardData.id);
+  const initializeData = async () => {
+    // Only show loading state if we're actually going to fetch data
+    if (user && !authLoading) {
+      setCardsLoading(true);
+      try {
+        // Load selected card from localStorage
+        const storedCard = localStorage.getItem('selectedCard');
+        if (storedCard) {
+          try {
+            const cardData = JSON.parse(storedCard);
+            setSelectedCard(cardData);
+            
+            // If we're in transactions step but people array is empty, fetch people
+            if (currentStep === 'transactions' && people.length === 0 && cardData.id) {
+              await fetchPeopleForCard(cardData.id);
+            }
+          } catch (e) {
+            console.error('Error parsing stored card:', e);
+            localStorage.removeItem('selectedCard');
+            // Redirect to onboarding if card data is invalid
+            navigate('/onboarding');
           }
-        } catch (e) {
-          console.error('Error parsing stored card:', e);
-          localStorage.removeItem('selectedCard');
-          // Redirect to onboarding if card data is invalid
-          navigate('/onboarding');
-        }
-      } else if (user) {
-        // No card selected but user is logged in - fetch their cards
-        setCardsLoading(true);
-        try {
+        } else {
+          // No card selected but user is logged in - fetch their cards
           await fetchUserCards(user.id);
-        } finally {
-          setCardsLoading(false);
         }
-      }
-      
-      // Load people from localStorage
-      const savedPeople = localStorage.getItem('splitPeople');
-      if (savedPeople && people.length === 0) {
-        try {
-          setPeople(JSON.parse(savedPeople));
-        } catch (e) {
-          console.error('Error parsing saved people:', e);
-          localStorage.removeItem('splitPeople');
+        
+        // Load people from localStorage
+        const savedPeople = localStorage.getItem('splitPeople');
+        if (savedPeople && people.length === 0) {
+          try {
+            setPeople(JSON.parse(savedPeople));
+          } catch (e) {
+            console.error('Error parsing saved people:', e);
+            localStorage.removeItem('splitPeople');
+          }
         }
+      } finally {
+        setCardsLoading(false);
       }
-    };
-    
-    if (!authLoading && user) {
-      initializeData();
-    }
-  }, [authLoading, user, currentStep]);
-
-  const fetchUserCards = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('credit_cards')
-        .select('*')
-        .eq('user_id', userId);
-
-      if (error) throw error;
-      setAvailableCards(data || []);
-    } catch (error) {
-      console.error('Error fetching user cards:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load your cards. Please try again.",
-        variant: "destructive",
-      });
     }
   };
+  
+  initializeData();
+}, [user, authLoading]);
 
-const fetchPeopleForCard = async (cardId: string) => {
+  const fetchUserCards = async (userId: string) => {
   try {
-    // @ts-ignore - Skip type checking for this complex query
-    const result = await supabase
-      .from('card_members')
-      .select('user_id')
-      .eq('card_id', cardId);
+    const { data, error } = await supabase
+      .from('credit_cards')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    setAvailableCards(data || []);
     
-    if (result.error) throw result.error;
-    
-    // Simple type assertion
-    const memberIds = (result.data || []).map((member: any) => member.user_id);
-    
-    // Include the card owner in people
-    if (selectedCard && !memberIds.includes(selectedCard.user_id)) {
-      memberIds.push(selectedCard.user_id);
+    // If no cards are found, make sure to handle it gracefully
+    if (!data || data.length === 0) {
+      console.log('No cards found for user');
     }
-    
-    // Get profiles
-    // @ts-ignore - Skip type checking
-    const profilesResult = await supabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .in('id', memberIds);
-    
-    if (profilesResult.error) throw profilesResult.error;
-    const profiles = profilesResult.data;
-    
-    // Format into people array
-    const newPeople: Person[] = profiles.map(profile => ({
-      id: profile.id,
-      name: profile.full_name || profile.email,
-      isCardOwner: profile.id === selectedCard?.user_id
-    }));
-    
-    setPeople(newPeople);
-    return newPeople;
   } catch (error) {
-    console.error('Error fetching people for card:', error);
+    console.error('Error fetching user cards:', error);
     toast({
       title: "Error",
-      description: "Failed to load people for this card.",
+      description: "Failed to load your cards. Please try again.",
       variant: "destructive",
     });
-    return [];
+    // Reset available cards to prevent stale data
+    setAvailableCards([]);
   }
 };
+
+  const fetchPeopleForCard = async (cardId: string) => {
+    try {
+      // @ts-ignore - Skip type checking for this complex query
+      const result = await supabase
+        .from('card_members')
+        .select('user_id')
+        .eq('card_id', cardId);
+
+      if (result.error) throw result.error;
+
+      // Simple type assertion
+      const memberIds = (result.data || []).map((member: any) => member.user_id);
+
+      // Include the card owner in people
+      if (selectedCard && !memberIds.includes(selectedCard.user_id)) {
+        memberIds.push(selectedCard.user_id);
+      }
+
+      // Get profiles
+      // @ts-ignore - Skip type checking
+      const profilesResult = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', memberIds);
+
+      if (profilesResult.error) throw profilesResult.error;
+      const profiles = profilesResult.data;
+
+      // Format into people array
+      const newPeople: Person[] = profiles.map(profile => ({
+        id: profile.id,
+        name: profile.full_name || profile.email,
+        isCardOwner: profile.id === selectedCard?.user_id
+      }));
+
+      setPeople(newPeople);
+      return newPeople;
+    } catch (error) {
+      console.error('Error fetching people for card:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load people for this card.",
+        variant: "destructive",
+      });
+      return [];
+    }
+  };
 
   const handleCardSelect = (cardId: string) => {
     const card = availableCards.find(c => c.id === cardId);
@@ -332,6 +345,19 @@ const fetchPeopleForCard = async (cardId: string) => {
       </SheetContent>
     </Sheet>
   );
+
+  // Add this to your Index.tsx component
+  const resetStates = () => {
+    setCardsLoading(false);
+    // Reset other loading states as needed
+  };
+
+  // Use the useEffect hook to reset states when the component unmounts
+  useEffect(() => {
+    return () => {
+      resetStates();
+    };
+  }, []);
 
   // Show loading state while auth is being checked
   if (authLoading) {
@@ -529,17 +555,31 @@ const fetchPeopleForCard = async (cardId: string) => {
                                 <DialogHeader>
                                   <DialogTitle>Select Credit Card</DialogTitle>
                                 </DialogHeader>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-                                  {availableCards.map((card) => (
-                                    <CreditCardDisplay
-                                      key={card.id}
-                                      card={card}
-                                      onUpdate={() => fetchUserCards(user.id)}
-                                      isSelected={selectedCard?.id === card.id}
-                                      onSelect={handleCardSelect}
-                                    />
-                                  ))}
-                                </div>
+                                {cardsLoading ? (
+                                  <div className="flex flex-col items-center justify-center py-8">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                                    <p>Loading your cards...</p>
+                                  </div>
+                                ) : availableCards.length === 0 ? (
+                                  <div className="text-center py-8">
+                                    <p className="mb-4">No credit cards found.</p>
+                                    <Button onClick={() => navigate('/onboarding')}>
+                                      Add a Card
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+                                    {availableCards.map((card) => (
+                                      <CreditCardDisplay
+                                        key={card.id}
+                                        card={card}
+                                        onUpdate={() => fetchUserCards(user.id)}
+                                        isSelected={selectedCard?.id === card.id}
+                                        onSelect={handleCardSelect}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
                               </DialogContent>
                             </Dialog>
                           </div>
@@ -692,7 +732,7 @@ const fetchPeopleForCard = async (cardId: string) => {
                         year={selectedYear}
                       />
                     </div>
-                    
+
                   </div>
                 )}
               </>

@@ -231,17 +231,44 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
     }
 
     setLoading(true);
+    
+    // Add timeout to prevent infinite hangs
+    const timeout = setTimeout(() => {
+      console.error('Card addition timed out');
+      setLoading(false);
+      toast({
+        title: "Timeout Error",
+        description: "The operation took too long to complete. Please try again.",
+        variant: "destructive",
+      });
+    }, 15000); // 15 second timeout
 
     try {
+      console.log('Getting current user...');
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
         throw new Error('User not authenticated');
       }
+      console.log('User authenticated:', user.id);
 
       const cleanCardNumber = cardNumber.replace(/\s/g, '');
       const lastFourDigits = cleanCardNumber.slice(-4);
+
+      // Sanitize the cardInfo object to ensure it's valid JSON
+      const sanitizedCardInfo = {
+        brand: cardInfo?.brand || 'Unknown',
+        type: cardInfo?.type || 'Credit'
+      };
+
+      console.log('Inserting card...', {
+        user_id: user.id,
+        card_name: cardName,
+        last_four_digits: lastFourDigits,
+        card_type: sanitizedCardInfo.brand,
+        // Not logging full cardInfo for security
+      });
 
       const { data, error } = await supabase
         .from('credit_cards')
@@ -249,15 +276,21 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
           user_id: user.id,
           card_name: cardName,
           last_four_digits: lastFourDigits,
-          bin_info: cardInfo,
-          card_type: cardInfo?.brand,
+          bin_info: sanitizedCardInfo, // Use sanitized object
+          card_type: sanitizedCardInfo.brand,
           is_primary: true // First card is always primary for now
         })
         .select()
         .single();
 
-      if (error) throw error;
+      clearTimeout(timeout); // Clear the timeout as operation completed
 
+      if (error) {
+        console.error('Supabase insert error:', error);
+        throw error;
+      }
+
+      console.log('Card added successfully:', data?.id);
       toast({
         title: "Success!",
         description: "Credit card added successfully",
@@ -265,12 +298,14 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
 
       onCardAdded(data);
     } catch (error: any) {
+      console.error('Error adding card:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to add card. Please try again.",
         variant: "destructive",
       });
     } finally {
+      clearTimeout(timeout); // Ensure timeout is cleared
       setLoading(false);
     }
   };

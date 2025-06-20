@@ -46,6 +46,10 @@ const Onboarding = () => {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   
+  // Invitation processing state
+  const [invitationLoading, setInvitationLoading] = useState(false);
+  const [invitationError, setInvitationError] = useState<string>('');
+  
 
   useEffect(() => {
     let isMounted = true;
@@ -393,6 +397,54 @@ const Onboarding = () => {
       </SheetContent>
     </Sheet>
   );
+
+  // Invitation processing effect
+  useEffect(() => {
+    // Get URL parameters inside this effect to ensure they're available
+    const isInvite = searchParams.get('invite') === 'true';
+    const cardId = searchParams.get('cardId');
+    
+    let timeoutId: NodeJS.Timeout;
+    
+    const processInvitation = async () => {
+      try {
+        setInvitationLoading(true);
+        
+        // Add a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (invitationLoading) {
+            setInvitationLoading(false);
+            setInvitationError("The invitation process timed out. Please try again.");
+            console.error("Invitation processing timed out");
+          }
+        }, 15000); // 15 second timeout
+        
+        // If user exists, process the invitation
+        if (user && cardId) {
+          await handleInvitationAcceptance(cardId, user);
+        }
+        
+        // After successful processing
+        clearTimeout(timeoutId);
+        setInvitationLoading(false);
+      } catch (error) {
+        clearTimeout(timeoutId);
+        setInvitationLoading(false);
+        setInvitationError("Failed to process invitation. Please try again.");
+        console.error("Error processing invitation:", error);
+      }
+    };
+    
+    if (isInvite && cardId && user) {
+      processInvitation();
+    }
+    
+    // Cleanup function
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      setInvitationLoading(false);
+    };
+  }, [searchParams, user]); // Add searchParams and user as dependencies
 
   if (loading || processingInvitation) {
     return (
