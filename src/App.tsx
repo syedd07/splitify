@@ -13,6 +13,7 @@ import { requestNotificationPermission } from "@/lib/notifications";
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Footer from "./components/Footer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
+import AuthCallback from "./pages/auth/Callback"; // Import the AuthCallback component
 
 const queryClient = new QueryClient();
 
@@ -119,6 +120,7 @@ const App = () => {
                     </ProtectedRoute>
                   } 
                 />
+                <Route path="/auth/callback" element={<AuthCallback />} /> {/* Add the AuthCallback route */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </LayoutWithFooter>

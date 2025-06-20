@@ -400,38 +400,158 @@ const Onboarding = () => {
 
   // Invitation processing effect
   useEffect(() => {
-    // Get URL parameters inside this effect to ensure they're available
+    // Get URL parameters
     const isInvite = searchParams.get('invite') === 'true';
     const cardId = searchParams.get('cardId');
     
     let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
     
     const processInvitation = async () => {
       try {
+        // Only show loading if we're actually going to do something
         setInvitationLoading(true);
         
         // Add a timeout to prevent infinite loading
         timeoutId = setTimeout(() => {
-          if (invitationLoading) {
+          if (isMounted && invitationLoading) {
             setInvitationLoading(false);
             setInvitationError("The invitation process timed out. Please try again.");
             console.error("Invitation processing timed out");
           }
         }, 15000); // 15 second timeout
         
-        // If user exists, process the invitation
-        if (user && cardId) {
-          await handleInvitationAcceptance(cardId, user);
+        if (!user) {
+          console.log("No user found, waiting for auth");
+          return;
         }
         
-        // After successful processing
-        clearTimeout(timeoutId);
-        setInvitationLoading(false);
+        // Check if user is already a member of this card
+        const { data: memberData, error: memberError } = await supabase
+          .from('card_members')
+          .select('id')
+          .eq('credit_card_id', cardId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+          
+        if (!memberError && memberData) {
+          console.log("User is already a member of this card");
+          // Already a member, we can skip the invitation processing
+          if (isMounted) {
+            setInvitationLoading(false);
+            setCurrentStep('cards');  // Move to appropriate step
+          }
+          return;
+        }
+          
+        // Find the pending invitation for this user and card
+        const { data: invitation, error: inviteError } = await supabase
+          .from('card_invitations')
+          .select('*')
+          .eq('credit_card_id', cardId)
+          .eq('invited_email', user.email)
+          .eq('status', 'pending')
+          .maybeSingle();
+          
+        if (inviteError || !invitation) {
+          // Check if there's an already accepted invitation
+          const { data: acceptedInvite } = await supabase
+            .from('card_invitations')
+            .select('*')
+            .eq('credit_card_id', cardId)
+            .eq('invited_email', user.email)
+            .eq('status', 'accepted')
+            .maybeSingle();
+            
+          if (acceptedInvite) {
+            console.log("Invitation was already accepted");
+            // Already processed, just continue to cards
+            if (isMounted) {
+              setInvitationLoading(false);
+              setCurrentStep('cards');
+            }
+            return;
+          }
+          
+          // No invitation found - this is unusual but possible
+          console.error('No pending invitation found:', inviteError);
+          if (isMounted) {
+            setInvitationError("No valid invitation found. Please contact the card owner.");
+            setInvitationLoading(false);
+          }
+          return;
+        }
+        
+        console.log("Processing invitation:", invitation.id);
+        
+        // Update the invitation status to accepted
+        const { error: updateError } = await supabase
+          .from('card_invitations')
+          .update({
+            status: 'accepted',
+            invited_user_id: user.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', invitation.id);
+          
+        if (updateError) {
+          console.error('Error updating invitation:', updateError);
+          throw updateError;
+        }
+        
+        // Add user to card_members
+        const { error: memberAddError } = await supabase
+          .from('card_members')
+          .insert({
+            credit_card_id: cardId,
+            user_id: user.id,
+            role: 'member'
+          });
+          
+        if (memberAddError) {
+          // If it's a duplicate key error, it's fine - user is already a member
+          if (!memberAddError.message.includes('duplicate key')) {
+            console.error('Error adding member:', memberAddError);
+            throw memberAddError;
+          }
+        }
+        
+        console.log("Invitation accepted successfully");
+        
+        // Get the card details
+        const { data: cardData, error: cardError } = await supabase
+          .from('credit_cards')
+          .select('*')
+          .eq('id', cardId)
+          .single();
+          
+        if (cardError) {
+          console.error('Error fetching card:', cardError);
+          throw cardError;
+        }
+        
+        // Set the card as selected
+        if (cardData) {
+          localStorage.setItem('selectedCard', JSON.stringify(cardData));
+          setSelectedCardId(cardData.id);
+        }
+        
+        // Navigate to the cards step
+        if (isMounted) {
+          setCurrentStep('cards');
+          setInvitationLoading(false);
+        }
       } catch (error) {
+        console.error('Error processing invitation:', error);
+        if (isMounted) {
+          setInvitationLoading(false);
+          setInvitationError("Failed to process invitation. Please try again.");
+        }
+      } finally {
         clearTimeout(timeoutId);
-        setInvitationLoading(false);
-        setInvitationError("Failed to process invitation. Please try again.");
-        console.error("Error processing invitation:", error);
+        if (isMounted) {
+          setInvitationLoading(false);
+        }
       }
     };
     
@@ -441,10 +561,11 @@ const Onboarding = () => {
     
     // Cleanup function
     return () => {
+      isMounted = false;
       if (timeoutId) clearTimeout(timeoutId);
       setInvitationLoading(false);
     };
-  }, [searchParams, user]); // Add searchParams and user as dependencies
+  }, [searchParams, user, setCurrentStep, setSelectedCardId]);
 
   if (loading || processingInvitation) {
     return (
@@ -667,7 +788,7 @@ const Onboarding = () => {
           <div className="grid gap-4 sm:gap-6">
             {/* Add Credit Card Button or Form */}
             {!showAddCard && creditCards.length === 0 && (
-              <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
+                <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
                 <CardContent className="p-6 sm:p-8">
                   <button
                     onClick={() => setShowAddCard(true)}
@@ -726,3 +847,7 @@ const Onboarding = () => {
 };
 
 export default Onboarding;
+function setCurrentStep(arg0: string) {
+  throw new Error('Function not implemented.');
+}
+
