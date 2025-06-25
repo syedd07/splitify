@@ -30,8 +30,28 @@ const Auth = () => {
       setEmail(decodeURIComponent(inviteEmail));
     }
 
-    // For existing users only: if already authenticated, redirect appropriately
+    // IMPORTANT: Improve detection of invited users who need to complete setup
     if (user) {
+      // Check if this is an invited user who needs to set a password
+      const needsPasswordSetup = 
+        inviteCardId && // Coming from invitation link
+        user.app_metadata?.provider === 'email' && 
+        (!user.user_metadata?.full_name || !user.last_sign_in_at) &&
+        (user.user_metadata?.invitation_type === 'card_invitation' || 
+         searchParams.get('setup') === 'true');
+        
+      if (needsPasswordSetup) {
+        // This is an invited user who needs to set a password
+        // Keep them on the auth page, prefill email, and show message
+        toast({
+          title: "Complete Your Account Setup",
+          description: "Please set your name and password to access your shared card.",
+          duration: 8000,
+        });
+        return; // Don't redirect
+      }
+      
+      // Regular authenticated users can proceed to onboarding
       if (inviteCardId) {
         navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
       } else {
@@ -41,33 +61,33 @@ const Auth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        // Check if this is a new sign-up (registration)
-        if (event === 'SIGNED_IN') {
-          // Get the user's metadata to see if they've just signed up
-          const isNewUser = !session.user.email_confirmed_at;
+        // Similar logic for auth state changes
+        const isNewUser = !session.user.email_confirmed_at;
+        const isInvitedUser = 
+          session.user.app_metadata?.provider === 'email' && 
+          !session.user.last_sign_in_at &&
+          session.user.user_metadata?.invitation_type === 'card_invitation';
           
-          // For new users, we should keep them on the auth page until email verification
-          if (isNewUser && inviteCardId) {
-            toast({
-              title: "Verification needed",
-              description: "Please check your email and verify your account before continuing.",
-            });
-            // Don't redirect yet - they need to verify email first
-            return;
-          }
-          
-          // For verified users, proceed with redirection
-          if (inviteCardId) {
-            navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
-          } else {
-            navigate('/onboarding');
-          }
+        if ((isNewUser || isInvitedUser) && inviteCardId) {
+          toast({
+            title: "Setup needed",
+            description: "Please set your password to complete your account setup.",
+          });
+          // Don't redirect yet
+          return;
+        }
+        
+        // For verified users with passwords set
+        if (inviteCardId) {
+          navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
+        } else {
+          navigate('/onboarding');
         }
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, inviteCardId, inviteEmail, user, toast]);
+  }, [navigate, inviteCardId, inviteEmail, user, toast, searchParams]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +124,37 @@ const Auth = () => {
 
       if (error) throw error;
       
+      if (data?.user && inviteCardId) {
+        // Explicitly update the user's metadata
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              full_name: fullName.trim(),
+              invitation_type: 'card_invitation',
+              card_id: inviteCardId
+            }
+          });
+          
+          console.log("Updated user metadata");
+          
+          // Ensure profile exists
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              full_name: fullName.trim(),
+              email: email.trim().toLowerCase(),
+              updated_at: new Date().toISOString()
+            });
+            
+          if (profileError) {
+            console.error("Error ensuring profile exists:", profileError);
+          }
+        } catch (updateError) {
+          console.error("Error updating user metadata:", updateError);
+        }
+      }
+
       // Show success message but don't try to create a profile here
       // The profile will be created by the database trigger after email verification
       
@@ -374,6 +425,108 @@ const Auth = () => {
     }
   };
 
+  // Add this new function to handle invited users who need to set a password
+  const handleInvitedUserSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!fullName.trim()) {
+      toast({
+        title: "Full name required",
+        description: "Please enter your full name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!password.trim() || password.length < 6) {
+      toast({
+        title: "Valid password required",
+        description: "Please enter a password with at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      // First update the user's metadata
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
+        data: {
+          full_name: fullName.trim(),
+          invitation_type: 'card_invitation',
+          card_id: inviteCardId || undefined
+        }
+      });
+      
+      if (updateError) throw updateError;
+      
+      // Then update their profile - even if user is null, use the known email
+      if (user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: user.id,
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            updated_at: new Date().toISOString()
+          });
+          
+        if (profileError) {
+          console.error("Error updating profile:", profileError);
+        }
+      }
+      
+      toast({
+        title: "Account setup complete!",
+        description: "You can now access your shared card.",
+      });
+      
+      // Ensure we process the invitation properly
+      if (inviteCardId) {
+        // Get invitation details and update status if needed
+        const { data: inviteData } = await supabase
+          .from('card_invitations')
+          .select('*')
+          .eq('credit_card_id', inviteCardId)
+          .eq('invited_email', email.toLowerCase())
+          .eq('status', 'pending')
+          .maybeSingle();
+          
+        if (inviteData) {
+          // Update invitation status
+          await supabase
+            .from('card_invitations')
+            .update({
+              status: 'accepted',
+              invited_user_id: user.id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', inviteData.id);
+        }
+      }
+      
+      // Redirect to onboarding after short delay
+      setTimeout(() => {
+        if (inviteCardId) {
+          navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
+        } else {
+          navigate('/onboarding');
+        }
+      }, 1500);
+    } catch (error: any) {
+      console.error("Account setup error:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -499,6 +652,35 @@ const Auth = () => {
                     'Create Account'
                   )}
                 </Button>
+                {/* Special button for invited users who need to set password */}
+                {inviteEmail && user && !user.last_sign_in_at && (
+                  <Card className="mt-6 bg-green-50 border-green-200">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2 text-green-700 mb-3">
+                        <CheckCircle className="h-5 w-5" />
+                        <h3 className="font-medium">Invitation Accepted!</h3>
+                      </div>
+                      <p className="text-sm text-green-700 mb-4">
+                        Complete your account setup below to access your shared card.
+                      </p>
+                      <Button 
+                        type="button"
+                        onClick={handleInvitedUserSetup} 
+                        className="w-full bg-green-600 hover:bg-green-700"
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Setting up account...
+                          </>
+                        ) : (
+                          'Complete Account Setup'
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
               </form>
             </TabsContent>
           </Tabs>
