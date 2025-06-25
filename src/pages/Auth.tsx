@@ -30,28 +30,38 @@ const Auth = () => {
       setEmail(decodeURIComponent(inviteEmail));
     }
 
-    // IMPORTANT: Improve detection of invited users who need to complete setup
+    // Add debug info
+    if (user && inviteCardId) {
+      console.log("Invited user state:", {
+        id: user.id,
+        email: user.email,
+        hasPassword: !!user.last_sign_in_at,
+        inviteParams: { inviteCardId, inviteEmail },
+        metadata: user.user_metadata,
+        appMetadata: user.app_metadata
+      });
+    }
+
     if (user) {
-      // Check if this is an invited user who needs to set a password
-      const needsPasswordSetup = 
-        inviteCardId && // Coming from invitation link
-        user.app_metadata?.provider === 'email' && 
-        (!user.user_metadata?.full_name || !user.last_sign_in_at) &&
-        (user.user_metadata?.invitation_type === 'card_invitation' || 
-         searchParams.get('setup') === 'true');
-        
-      if (needsPasswordSetup) {
-        // This is an invited user who needs to set a password
-        // Keep them on the auth page, prefill email, and show message
-        toast({
-          title: "Complete Your Account Setup",
-          description: "Please set your name and password to access your shared card.",
-          duration: 8000,
-        });
-        return; // Don't redirect
+      // MUCH MORE AGGRESSIVE detection for invited users
+      // If they came from an invite link, ALWAYS show the setup form first
+      const cameFromInvite = !!inviteCardId && !!inviteEmail;
+      
+      if (cameFromInvite) {
+        // For invited users, ALWAYS show the password setup form first
+        // Only redirect if we know they've logged in before (has password)
+        if (!user.last_sign_in_at) {
+          console.log("Invited user needs setup - keeping on Auth page");
+          toast({
+            title: "Complete Your Account Setup",
+            description: "Please set your name and password to access your shared card.",
+            duration: 8000,
+          });
+          return; // Don't redirect yet
+        }
       }
       
-      // Regular authenticated users can proceed to onboarding
+      // Only regular authenticated users or invited users with passwords can proceed
       if (inviteCardId) {
         navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
       } else {
@@ -652,8 +662,8 @@ const Auth = () => {
                     'Create Account'
                   )}
                 </Button>
-                {/* Special button for invited users who need to set password */}
-                {inviteEmail && user && !user.last_sign_in_at && (
+                {/* Special button for invited users who need to set password - SHOW MORE AGGRESSIVELY */}
+                {inviteEmail && (
                   <Card className="mt-6 bg-green-50 border-green-200">
                     <CardContent className="pt-6">
                       <div className="flex items-center gap-2 text-green-700 mb-3">
