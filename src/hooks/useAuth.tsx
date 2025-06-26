@@ -38,22 +38,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         // Get initial session
         const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user || null);
         
+        // Important: Set the user state ONCE after we have complete information
         if (session?.user) {
           const profile = await fetchUserProfile(session.user.id);
+          setUser(session.user);
           setUserProfile(profile);
+        } else {
+          setUser(null);
+          setUserProfile(null);
         }
         
-        // Set up listener for auth changes
+        // Set up listener for auth changes - this runs AFTER initial setup
         const authSubscription = supabase.auth.onAuthStateChange(
           async (event, session) => {
-            setUser(session?.user || null);
+            console.log("Auth state changed:", event);
             
             if (session?.user) {
               const profile = await fetchUserProfile(session.user.id);
+              setUser(session.user);
               setUserProfile(profile);
             } else {
+              setUser(null);
               setUserProfile(null);
             }
           }
@@ -61,13 +67,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         subscription = authSubscription.data.subscription;
       } finally {
+        // Always set loading to false when auth setup is complete
         setLoading(false);
       }
     };
     
     setupAuth();
     
-    // Proper cleanup function
     return () => {
       if (subscription) {
         subscription.unsubscribe();
@@ -76,9 +82,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
   
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setUserProfile(null);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   return (

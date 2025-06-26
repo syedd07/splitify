@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Link as LinkIcon, Copy, CheckCircle2 } from 'lucide-react';
 
 interface InviteUserDialogProps {
   cardId: string;
@@ -29,6 +29,9 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [invitationUrl, setInvitationUrl] = useState('');
+  const [invitationGenerated, setInvitationGenerated] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
   // Add an abort controller for API calls
@@ -43,7 +46,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     };
   }, []);
 
-  const handleInvite = async () => {
+  const handleGenerateInvite = async () => {
     if (!email.trim()) {
       toast({
         title: "Error",
@@ -71,21 +74,6 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     
     setIsLoading(true);
     
-    // Add a timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      if (isLoading) {
-        setIsLoading(false);
-        toast({
-          title: "Operation timed out",
-          description: "The invitation process took too long. Please try again.",
-          variant: "destructive",
-        });
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
-      }
-    }, 15000); // 15 second timeout
-    
     try {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -103,7 +91,6 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: "You cannot invite yourself",
           variant: "destructive",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -125,101 +112,77 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
           description: "Only card owners can send invitations",
           variant: "destructive",
         });
-        setIsLoading(false);
         return;
       }
 
-      // Safely handle shared_emails as Json type
-      const currentSharedEmails = Array.isArray(cardData.shared_emails) 
-        ? cardData.shared_emails as string[]
-        : [];
-
-      // Check if email is already shared
-      if (currentSharedEmails.includes(inviteEmail)) {
-        toast({
-          title: "Already shared",
-          description: "This email already has access to the card",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      // Get user profile to get inviter's name
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
+      // Create invitation record
+      const { data: invitationData, error: inviteError } = await supabase
+        .from('card_invitations')
+        .insert({
+          credit_card_id: cardId,
+          inviter_user_id: user.id,
+          invited_email: inviteEmail,
+          status: 'pending',
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        })
+        .select('id')
         .single();
         
-      if (profileError) {
-        console.error('Error fetching user profile:', profileError);
-        // Continue with null name if profile fetch fails
-      }
-        
-      const inviterName = profileData?.full_name || user.email?.split('@')[0] || 'A Splitify user';
-
-      // Call the admin-invite-user Edge Function to handle both DB updates and email sending
-      const { data: inviteData, error: inviteFunctionError } = await supabase.functions.invoke(
-        'admin-invite-user',
-        {
-          body: {
-            cardId: cardId,
-            cardName: cardName,
-            invitedEmail: inviteEmail,
-            inviterName: inviterName
-          }
-        }
-      );
-
-      if (inviteFunctionError) {
-        throw inviteFunctionError;
+      if (inviteError) {
+        throw inviteError;
       }
 
-      // Show appropriate message based on the function response
-      if (inviteData?.warning) {
-        toast({
-          title: "Invitation Created",
-          description: inviteData.message || "User has been invited but there may be issues with email delivery",
-          
-        });
-      } else {
-        toast({
-          title: "Invitation Sent!",
-          description: inviteData?.message || `${inviteEmail} has been invited to access ${cardName}`,
-        });
-      }
-
-      // Clear the timeout on success
-      clearTimeout(timeoutId);
+      // Generate invitation URL
+      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodeURIComponent(inviteEmail)}&token=${invitationData.id}`;
       
-      setEmail('');
-      setIsOpen(false);
+      // Store invite URL for display
+      setInvitationUrl(inviteUrl);
+      setInvitationGenerated(true);
+      
+      toast({
+        title: "Invitation Created",
+        description: "Share the generated link with your contact",
+      });
     } catch (error: any) {
-      console.error('Error inviting user:', error);
+      console.error('Error creating invitation:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to send invitation",
+        description: error.message || "Failed to create invitation",
         variant: "destructive",
       });
     } finally {
-      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(invitationUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   
-  // Also modify your Dialog component to reset state when closed
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open && isLoading) {
-        // Cancel any pending operations when dialog is closed
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
-        setIsLoading(false);
+  // Reset dialog state when closed
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      if (isLoading && abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
-      setIsOpen(open);
-    }}>
+      
+      // Only reset if dialog is actually closing
+      if (isOpen) {
+        setTimeout(() => {
+          setInvitationGenerated(false);
+          setInvitationUrl('');
+          setEmail('');
+          setIsLoading(false);
+        }, 300); // Slight delay to avoid visual glitch
+      }
+    }
+    setIsOpen(open);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
@@ -227,44 +190,86 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Invite User</DialogTitle>
           <DialogDescription>
-            Invite someone to access "{cardName}". They'll be able to view and add transactions to this card.
+            {invitationGenerated 
+              ? "Share this link with the person you want to invite."
+              : `Invite someone to access "${cardName}". They'll be able to view and add transactions to this card.`
+            }
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Enter email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isLoading) {
-                  handleInvite();
-                }
-              }}
-            />
+        
+        {invitationGenerated ? (
+          <div className="grid gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label>Share this invitation link</Label>
+              <div className="flex items-center gap-2">
+                <Input 
+                  value={invitationUrl} 
+                  readOnly 
+                  className="font-mono text-xs"
+                />
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={copyToClipboard}
+                  className="shrink-0"
+                >
+                  {copied ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                This link will expire in 7 days and is specific to {email}
+              </p>
+            </div>
+            <div className="flex justify-between mt-4">
+              <Button variant="outline" onClick={() => {
+                setInvitationGenerated(false);
+                setInvitationUrl('');
+                setEmail('');
+              }}>
+                Create New Invitation
+              </Button>
+              <Button variant="default" onClick={() => setIsOpen(false)}>
+                Done
+              </Button>
+            </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleInvite} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-2" />
-                Send Invitation
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+        ) : (
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email address</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isLoading) {
+                    handleGenerateInvite();
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleGenerateInvite} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    Generate Invite Link
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -30,26 +30,19 @@ const Auth = () => {
       setEmail(decodeURIComponent(inviteEmail));
     }
 
-    // Add debug info
-    if (user && inviteCardId) {
-      console.log("Invited user state:", {
+    // Only handle redirects if we have a user and auth state is fully loaded
+    if (user) {
+      console.log("Auth page: User is authenticated", {
         id: user.id,
-        email: user.email,
         hasPassword: !!user.last_sign_in_at,
         inviteParams: { inviteCardId, inviteEmail },
-        metadata: user.user_metadata,
-        appMetadata: user.app_metadata
       });
-    }
-
-    if (user) {
-      // MUCH MORE AGGRESSIVE detection for invited users
-      // If they came from an invite link, ALWAYS show the setup form first
+      
+      // For invited users coming from an invite link
       const cameFromInvite = !!inviteCardId && !!inviteEmail;
       
       if (cameFromInvite) {
-        // For invited users, ALWAYS show the password setup form first
-        // Only redirect if we know they've logged in before (has password)
+        // For invited users, check if they've completed setup
         if (!user.last_sign_in_at) {
           console.log("Invited user needs setup - keeping on Auth page");
           toast({
@@ -61,33 +54,37 @@ const Auth = () => {
         }
       }
       
-      // Only regular authenticated users or invited users with passwords can proceed
+      // Handle redirect for authenticated users
       if (inviteCardId) {
+        console.log("Redirecting to onboarding with invite params");
         navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
       } else {
+        console.log("Redirecting to onboarding");
         navigate('/onboarding');
       }
     }
 
+    // Auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state change in Auth.tsx:", event);
+      
       if (session) {
-        // Similar logic for auth state changes
         const isNewUser = !session.user.email_confirmed_at;
         const isInvitedUser = 
           session.user.app_metadata?.provider === 'email' && 
           !session.user.last_sign_in_at &&
           session.user.user_metadata?.invitation_type === 'card_invitation';
           
+        // For unverified/invited users with card invites, stay on this page
         if ((isNewUser || isInvitedUser) && inviteCardId) {
           toast({
             title: "Setup needed",
             description: "Please set your password to complete your account setup.",
           });
-          // Don't redirect yet
-          return;
+          return; // Don't redirect
         }
         
-        // For verified users with passwords set
+        // For verified users, proceed to the appropriate page
         if (inviteCardId) {
           navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
         } else {
@@ -99,6 +96,7 @@ const Auth = () => {
     return () => subscription.unsubscribe();
   }, [navigate, inviteCardId, inviteEmail, user, toast, searchParams]);
 
+  // Modify the existing handleSignUp function in Auth.tsx
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -114,11 +112,11 @@ const Auth = () => {
     setLoading(true);
     
     try {
-      // For invited users, use the invitation flow
       const redirectUrl = `${window.location.origin}/auth/callback${inviteCardId ? `?invite=${inviteCardId}` : ''}`;
       
       console.log("Starting signup with email:", email);
 
+      // Do the regular signup flow - this creates the user properly
       const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -127,52 +125,39 @@ const Auth = () => {
           data: {
             full_name: fullName.trim(),
             invitation_type: inviteCardId ? 'card_invitation' : undefined,
-            card_id: inviteCardId || undefined
+            card_id: inviteCardId || undefined,
+            password_set: 'true' // Mark password as set immediately
           }
         }
       });
 
       if (error) throw error;
       
-      if (data?.user && inviteCardId) {
-        // Explicitly update the user's metadata
-        try {
-          await supabase.auth.updateUser({
-            data: {
-              full_name: fullName.trim(),
-              invitation_type: 'card_invitation',
-              card_id: inviteCardId
-            }
-          });
-          
-          console.log("Updated user metadata");
-          
-          // Ensure profile exists
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              full_name: fullName.trim(),
-              email: email.trim().toLowerCase(),
-              updated_at: new Date().toISOString()
-            });
-            
-          if (profileError) {
-            console.error("Error ensuring profile exists:", profileError);
-          }
-        } catch (updateError) {
-          console.error("Error updating user metadata:", updateError);
-        }
-      }
-
-      // Show success message but don't try to create a profile here
-      // The profile will be created by the database trigger after email verification
-      
+      // Show success message
       if (inviteCardId) {
         toast({
           title: "Invitation accepted!",
           description: "Please check your email to verify your account.",
         });
+        
+        // Update invitation status to "processing" to prevent multiple signups with same link
+        // Will be updated to "accepted" after email verification
+        if (data?.user) {
+          try {
+            await supabase
+              .from('card_invitations')
+              .update({
+                status: 'processing',
+                updated_at: new Date().toISOString()
+              })
+              .eq('credit_card_id', inviteCardId)
+              .eq('invited_email', email.trim().toLowerCase())
+              .eq('status', 'pending');
+          } catch (updateError) {
+            console.error("Error updating invitation status:", updateError);
+            // Non-critical error, don't show to user
+          }
+        }
       } else {
         toast({
           title: "Account created!",
@@ -284,6 +269,61 @@ const Auth = () => {
           description: "You've been successfully logged in.",
           duration: 3000, // Show for 3 seconds
         });
+        
+        // Add to the handleSignIn function, in the success block
+        if (data?.user && inviteCardId && inviteEmail) {
+          // If user is logging in with an invitation, accept the invitation
+          try {
+            // First verify the invitation is for this email
+            const userEmail = data.user.email?.toLowerCase();
+            const invitedEmail = decodeURIComponent(inviteEmail).toLowerCase();
+            
+            if (userEmail === invitedEmail) {
+              // Update the invitation status
+              const { error: updateError } = await supabase
+                .from('card_invitations')
+                .update({
+                  status: 'accepted',
+                  invited_user_id: data.user.id,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('credit_card_id', inviteCardId)
+                .eq('invited_email', invitedEmail)
+                .eq('status', 'pending');
+                
+              if (updateError) {
+                console.error("Error accepting invitation:", updateError);
+              } else {
+                // Add user to card_members
+                const { error: memberError } = await supabase
+                  .from('card_members')
+                  .insert({
+                    credit_card_id: inviteCardId,
+                    user_id: data.user.id,
+                    role: 'member'
+                  })
+                  .select();
+                  
+                if (memberError && !memberError.message.includes('duplicate key')) {
+                  console.error("Error adding member:", memberError);
+                }
+                
+                toast({
+                  title: "Invitation Accepted!",
+                  description: "You now have access to the shared card.",
+                });
+              }
+            } else {
+              toast({
+                title: "Email Mismatch",
+                description: "This invitation is for a different email address.",
+                variant: "destructive",
+              });
+            }
+          } catch (inviteError) {
+            console.error("Error processing invitation during login:", inviteError);
+          }
+        }
       }
     } catch (error: any) {
       console.error('Sign in error:', error);
@@ -536,6 +576,75 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  // Add this new useEffect to check invitation validity on load
+  useEffect(() => {
+    const checkInvitationValidity = async () => {
+      if (inviteCardId && inviteEmail) {
+        // Show checking status to the user
+        toast({
+          title: "Checking invitation...",
+          description: "Verifying this invitation link",
+        });
+
+        try {
+          // Verify the invitation record exists and is valid
+          const { data, error } = await supabase
+            .from('card_invitations')
+            .select('expires_at, status')
+            .eq('credit_card_id', inviteCardId)
+            .eq('invited_email', decodeURIComponent(inviteEmail).toLowerCase())
+            .single();
+            
+          if (error || !data) {
+            toast({
+              title: "Invalid Invitation",
+              description: "This invitation link is invalid or has been removed",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // Check if invitation is already used
+          if (data.status !== 'pending') {
+            toast({
+              title: "Invitation Already Used",
+              description: "This invitation has already been accepted or declined",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // Check if invitation is expired
+          if (new Date(data.expires_at) < new Date()) {
+            toast({
+              title: "Invitation Expired",
+              description: "This invitation link has expired",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          // Invitation is valid
+          toast({
+            title: "Valid Invitation",
+            description: "You can accept this invitation by signing up or logging in",
+          });
+        } catch (error) {
+          console.error("Error validating invitation:", error);
+          toast({
+            title: "Error",
+            description: "Could not verify the invitation. Please try again.",
+            variant: "destructive",
+          });
+        }
+      }
+    };
+    
+    if (inviteCardId && inviteEmail) {
+      checkInvitationValidity();
+    }
+  }, [inviteCardId, inviteEmail, toast, supabase]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">

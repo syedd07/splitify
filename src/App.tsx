@@ -13,18 +13,23 @@ import { requestNotificationPermission } from "@/lib/notifications";
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Footer from "./components/Footer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
-import AuthCallback from "./pages/auth/Callback"; // Import the AuthCallback component
+import AuthCallback from "./pages/auth/Callback";
 
 const queryClient = new QueryClient();
 
-// Protected route component
+// Protected route component with consistent loading indicator
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Loading your account...</p>
+        </div>
+      </div>
+    );
   }
   
   if (!user) {
@@ -34,14 +39,30 @@ const ProtectedRoute = ({ children }) => {
   return <>{children}</>;
 };
 
-// Root redirect component
+// Root redirect component with consistent localStorage handling
 const RootRedirect = () => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Log for debugging
+    console.log("RootRedirect:", { 
+      user: user?.id, 
+      loading, 
+      path: location.pathname,
+      selectedCard: localStorage.getItem('selectedCard')
+    });
+  }, [user, loading, location]);
   
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Preparing your dashboard...</p>
+        </div>
+      </div>
+    );
   }
   
   if (!user) {
@@ -49,12 +70,35 @@ const RootRedirect = () => {
   }
   
   // Check if user has completed onboarding
-  const selectedCard = localStorage.getItem('selectedCard');
+  const selectedCardData = localStorage.getItem('selectedCard');
+  let selectedCard = null;
+  
+  // Try to parse the selectedCard - it could be JSON object or just an ID string
+  if (selectedCardData) {
+    try {
+      // First try to parse as JSON
+      selectedCard = JSON.parse(selectedCardData);
+      
+      // If it parsed but is just a string ID, treat it as the ID
+      if (typeof selectedCard === 'string') {
+        console.log("selectedCard is a string ID:", selectedCard);
+      } else {
+        console.log("selectedCard is a JSON object with ID:", selectedCard.id);
+      }
+    } catch (e) {
+      // If it's not valid JSON, treat it as a plain string
+      console.log("selectedCard is not JSON, using as string:", selectedCardData);
+      selectedCard = selectedCardData;
+    }
+  }
+  
   if (!selectedCard) {
+    console.log("No selected card, redirecting to onboarding");
     return <Navigate to="/onboarding" replace />;
   }
   
   // Go to transactions page with transactions step pre-selected
+  console.log("Redirecting to transactions with step=transactions");
   localStorage.setItem('currentStep', 'transactions');
   return <Navigate to="/transactions" replace />;
 };
@@ -120,7 +164,7 @@ const App = () => {
                     </ProtectedRoute>
                   } 
                 />
-                <Route path="/auth/callback" element={<AuthCallback />} /> {/* Add the AuthCallback route */}
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </LayoutWithFooter>

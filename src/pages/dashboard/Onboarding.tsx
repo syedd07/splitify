@@ -344,32 +344,42 @@ const Onboarding = () => {
     
     const selectedCard = creditCards.find(card => card.id === selectedCardId);
     if (selectedCard) {
+      // Store the complete card data
       localStorage.setItem('selectedCard', JSON.stringify(selectedCard));
       
       // Check for existing transactions
       const hasTransactions = await checkForExistingTransactions(selectedCardId);
       
       if (hasTransactions) {
-        // Store a flag to indicate we should go to step 2
         localStorage.setItem('hasExistingTransactions', 'true');
+        localStorage.setItem('currentStep', 'transactions');
         toast({
           title: "Previous transactions found",
           description: "Loading your existing transactions...",
         });
       } else {
         localStorage.removeItem('hasExistingTransactions');
+        localStorage.setItem('currentStep', 'setup');
       }
       
-      navigate('/');
+      navigate('/transactions');
     }
   };
 
   const handleCardSelect = (cardId: string) => {
     setSelectedCardId(cardId);
-    // Save the selected card to localStorage with full data
-  localStorage.setItem('selectedCard', JSON.stringify(cardId));
-  // Set the current step for transactions page
-  localStorage.setItem('currentStep', 'transactions');
+    
+    // Find the full card data
+    const selectedCard = creditCards.find(card => card.id === cardId);
+    
+    if (selectedCard) {
+      // Always store the complete card object as JSON
+      localStorage.setItem('selectedCard', JSON.stringify(selectedCard));
+      // Set the current step for transactions page
+      localStorage.setItem('currentStep', 'transactions');
+    } else {
+      console.error(`Selected card with ID ${cardId} not found in creditCards array`);
+    }
   };
 
   // Mobile Menu Component
