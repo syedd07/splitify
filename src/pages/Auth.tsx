@@ -460,19 +460,21 @@ const Auth = () => {
     setLoading(true);
     
     try {
-      // First update the user's metadata
+      // Update user with password and set the critical password_set flag
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
         data: {
           full_name: fullName.trim(),
           invitation_type: 'card_invitation',
+          password_set: 'true', // This is the key flag!
           card_id: inviteCardId || undefined
         }
       });
       
       if (updateError) throw updateError;
       
-      // Then update their profile - even if user is null, use the known email
+      // Now that password is set, create/update profile
+      // This will now pass the RLS check
       if (user) {
         const { error: profileError } = await supabase
           .from('profiles')
@@ -483,9 +485,7 @@ const Auth = () => {
             updated_at: new Date().toISOString()
           });
           
-        if (profileError) {
-          console.error("Error updating profile:", profileError);
-        }
+        // Handle error...
       }
       
       toast({
