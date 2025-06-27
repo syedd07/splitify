@@ -161,10 +161,28 @@ const Onboarding = () => {
           return;
         }
 
-        // Safely handle shared_emails as Json type
-        const currentSharedEmails = Array.isArray(cardData.shared_emails) 
-          ? cardData.shared_emails as string[]
-          : [];
+        // Safely handle shared_emails as Json type with proper type checking
+        let currentSharedEmails: string[] = [];
+        if (cardData.shared_emails) {
+          try {
+            if (Array.isArray(cardData.shared_emails)) {
+              currentSharedEmails = cardData.shared_emails.filter((email): email is string => 
+                typeof email === 'string'
+              );
+            } else if (typeof cardData.shared_emails === 'string') {
+              const parsed = JSON.parse(cardData.shared_emails);
+              if (Array.isArray(parsed)) {
+                currentSharedEmails = parsed.filter((email): email is string => 
+                  typeof email === 'string'
+                );
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing shared_emails:', e);
+            currentSharedEmails = [];
+          }
+        }
+
         const userEmail = currentUser.email.toLowerCase();
         
         if (!currentSharedEmails.includes(userEmail)) {
@@ -224,44 +242,59 @@ const Onboarding = () => {
     }
   };
 
+  // Update the fetchCreditCards function to properly handle the Json type
   const fetchCreditCards = async (currentUser?: any) => {
     try {
       const userToUse = currentUser || user;
       if (!userToUse?.id) {
-      //  console.log('No user available for fetching credit cards');
         return;
       }
 
-      // console.log('Fetching credit cards for user:', userToUse.id, 'email:', userToUse.email);
-
-      // Fetch all cards the user has access to (owned + shared via email)
+      // Fetch all cards the user has access to (RLS will handle this)
       const { data: allCards, error } = await supabase
         .from('credit_cards')
         .select('*')
         .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching credit cards:', error);
-        throw error;
-      }
+      if (error) throw error;
       
-    //  console.log('Fetched cards:', allCards || []);
-
       // Transform cards and determine roles
-      const cardsWithRoles: CreditCardData[] = (allCards || []).map((card, index) => {
+      const cardsWithRoles = (allCards || []).map((card, index) => {
         const isOwner = card.user_id === userToUse.id;
         
-        // Safely handle shared_emails as Json type
-        const sharedEmails = Array.isArray(card.shared_emails) 
-          ? card.shared_emails as string[]
-          : [];
-        const isSharedViaEmail = !isOwner && sharedEmails.includes(userToUse.email?.toLowerCase());
+        // Handle shared_emails properly as JSONB - Type-safe approach
+        let sharedEmails: string[] = [];
+        if (card.shared_emails) {
+          try {
+            // Type guard to ensure we're working with an array
+            if (Array.isArray(card.shared_emails)) {
+              // Filter to ensure all items are strings
+              sharedEmails = card.shared_emails.filter((email): email is string => 
+                typeof email === 'string'
+              );
+            } else if (typeof card.shared_emails === 'string') {
+              // If it's a JSON string, parse it
+              const parsed = JSON.parse(card.shared_emails);
+              if (Array.isArray(parsed)) {
+                sharedEmails = parsed.filter((email): email is string => 
+                  typeof email === 'string'
+                );
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing shared_emails:', e);
+            sharedEmails = [];
+          }
+        }
+        
+        const isSharedWithUser = !isOwner && 
+          sharedEmails.some(email => email.toLowerCase() === userToUse.email?.toLowerCase());
         
         return {
           ...card,
           shared_emails: sharedEmails,
           is_primary: isOwner && index === 0, // Only first owned card is primary
-          role: isOwner ? 'owner' : 'member'
+          role: isOwner ? 'owner' : isSharedWithUser ? 'member' : 'guest'
         };
       });
 

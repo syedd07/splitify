@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,13 +26,12 @@ import InviteUserDialog from './InviteUserDialog';
 
 interface Member {
   id: string;
-  user_id: string;
+  user_id?: string;
+  email: string;
   role: string;
   created_at: string;
-  profiles: {
-    email: string;
-    full_name: string | null;
-  };
+  full_name: string | null;
+  source: 'owner' | 'shared_email' | 'card_member';
 }
 
 interface Invitation {
@@ -84,93 +82,114 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Check if user has access to this card
-      const { data: userAccess } = await supabase
+      // Get card details including shared_emails
+      const { data: cardData, error: cardError } = await supabase
         .from('credit_cards')
-        .select('user_id')
+        .select('user_id, shared_emails')
         .eq('id', cardId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+        .single();
 
-      const { data: memberAccess } = await supabase
-        .from('card_members')
-        .select('user_id')
-        .eq('credit_card_id', cardId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      if (cardError) throw cardError;
 
-      if (!userAccess && !memberAccess) {
+      // Check if user has access to this card
+      const userIsOwner = cardData.user_id === user.id;
+      const userInSharedEmails = cardData.shared_emails && Array.isArray(cardData.shared_emails) 
+        ? cardData.shared_emails.some((email: string) => email.toLowerCase() === user.email?.toLowerCase())
+        : false;
+
+      if (!userIsOwner && !userInSharedEmails) {
         throw new Error('Access denied');
       }
 
-      // Step 2: Fetch all members for the card
-      const { data: membersData, error: membersError } = await supabase
+      // Step 2: Fetch card owner profile
+      const { data: ownerProfile, error: ownerError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('id', cardData.user_id)
+        .single();
+
+      if (ownerError && ownerError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error fetching owner profile:', ownerError);
+      }
+
+      const allMembers: Member[] = [];
+
+      // Add card owner
+      allMembers.push({
+        id: `owner-${cardData.user_id}`,
+        user_id: cardData.user_id,
+        email: ownerProfile?.email || 'Unknown',
+        full_name: ownerProfile?.full_name || null,
+        role: 'owner',
+        created_at: new Date().toISOString(),
+        source: 'owner'
+      });
+
+      // Step 3: Process shared_emails
+      if (cardData.shared_emails && Array.isArray(cardData.shared_emails)) {
+        for (let i = 0; i < cardData.shared_emails.length; i++) {
+          const email = cardData.shared_emails[i];
+          
+          // Try to find profile for this email
+          const { data: emailProfile } = await supabase
+            .from('profiles')
+            .select('id, email, full_name')
+            .eq('email', (email as string).toLowerCase())
+            .maybeSingle();
+
+          allMembers.push({
+            id: `shared-${i}`,
+            user_id: emailProfile?.id,
+            email: String(email),
+            full_name: emailProfile?.full_name || null,
+            role: 'member',
+            created_at: new Date().toISOString(),
+            source: 'shared_email'
+          });
+        }
+      }
+
+      // Step 4: Fetch additional card_members (if any exist)
+      const { data: cardMembers } = await supabase
         .from('card_members')
         .select('id, user_id, role, created_at')
         .eq('credit_card_id', cardId);
 
-      if (membersError) throw membersError;
+      if (cardMembers && cardMembers.length > 0) {
+        const memberUserIds = cardMembers.map(m => m.user_id);
+        const { data: memberProfiles } = await supabase
+          .from('profiles')
+          .select('id, email, full_name')
+          .in('id', memberUserIds);
 
-      // Step 3: Fetch card owner as well
-      const { data: cardOwner, error: ownerError } = await supabase
-        .from('credit_cards')
-        .select('user_id')
-        .eq('id', cardId)
-        .single();
+        const profilesMap = (memberProfiles || []).reduce((acc, profile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {} as Record<string, any>);
 
-      if (ownerError) throw ownerError;
+        cardMembers.forEach(member => {
+          // Don't duplicate if already in shared_emails or is owner
+          const isDuplicate = allMembers.some(m => 
+            m.user_id === member.user_id || 
+            (profilesMap[member.user_id] && m.email === profilesMap[member.user_id].email)
+          );
 
-      // Step 4: Collect all unique user IDs
-      const allUserIds = new Set<string>();
-      
-      // Add card owner
-      allUserIds.add(cardOwner.user_id);
-      
-      // Add all members
-      (membersData || []).forEach(member => {
-        allUserIds.add(member.user_id);
-      });
+          if (!isDuplicate) {
+            const profile = profilesMap[member.user_id];
+            allMembers.push({
+              id: member.id,
+              user_id: member.user_id,
+              email: profile?.email || 'Unknown',
+              full_name: profile?.full_name || null,
+              role: member.role,
+              created_at: member.created_at,
+              source: 'card_member'
+            });
+          }
+        });
+      }
 
-      // Step 5: Fetch profiles for all users
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .in('id', Array.from(allUserIds));
-
-      if (profilesError) throw profilesError;
-
-      // Create profiles map
-      const profilesMap = (profilesData || []).reduce((acc, profile) => {
-        acc[profile.id] = {
-          email: profile.email || '',
-          full_name: profile.full_name
-        };
-        return acc;
-      }, {} as Record<string, { email: string; full_name: string | null }>);
-
-      // Step 6: Build members list including owner
-      const allMembers: Member[] = [];
-
-      // Add card owner first
-      allMembers.push({
-        id: `owner-${cardOwner.user_id}`,
-        user_id: cardOwner.user_id,
-        role: 'owner',
-        created_at: new Date().toISOString(),
-        profiles: profilesMap[cardOwner.user_id] || { email: '', full_name: null }
-      });
-
-      // Add other members (excluding owner if they're also in card_members)
-      (membersData || []).forEach(member => {
-        if (member.user_id !== cardOwner.user_id) {
-          allMembers.push({
-            ...member,
-            profiles: profilesMap[member.user_id] || { email: '', full_name: null }
-          });
-        }
-      });
-
-      // Step 7: Fetch pending invitations
+      // Step 5: Fetch pending invitations
       const { data: invitationsData, error: invitationsError } = await supabase
         .from('card_invitations')
         .select('*')
@@ -190,6 +209,48 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const removeSharedEmail = async (memberEmail: string, memberIndex: number) => {
+    try {
+      // Get current card data
+      const { data: cardData, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('shared_emails')
+        .eq('id', cardId)
+        .single();
+
+      if (cardError) throw cardError;
+
+      // Remove email from shared_emails array
+      let updatedSharedEmails = [];
+      if (cardData.shared_emails && Array.isArray(cardData.shared_emails)) {
+        updatedSharedEmails = cardData.shared_emails.filter((email: string) => 
+          email.toLowerCase() !== memberEmail.toLowerCase()
+        );
+      }
+
+      // Update the card
+      const { error: updateError } = await supabase
+        .from('credit_cards')
+        .update({ shared_emails: updatedSharedEmails })
+        .eq('id', cardId);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: "Access Revoked",
+        description: `${memberEmail} no longer has access to ${cardName}`,
+      });
+
+      fetchMembersAndInvitations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to revoke access",
+        variant: "destructive",
+      });
     }
   };
 
@@ -241,6 +302,11 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
     }
   };
 
+  const handleInvitationChange = () => {
+    // Refresh the data when invitations change
+    fetchMembersAndInvitations();
+  };
+
   const defaultTrigger = (
     <Button variant="outline" size="sm">
       <Users className="w-4 h-4 mr-2" />
@@ -253,7 +319,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
       <DialogTrigger asChild>
         {trigger || defaultTrigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
@@ -271,20 +337,20 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
             <div>
               <h4 className="font-medium mb-3 flex items-center gap-2">
                 <Users className="w-4 h-4" />
-                Members ({members.length})
+                Current Members ({members.length})
               </h4>
               <div className="space-y-2">
                 {members.map((member) => (
                   <div
-                    key={member.id}
+                    key={`${member.source}-${member.id}`}
                     className="flex items-center justify-between p-3 border rounded-lg"
                   >
                     <div>
                       <p className="font-medium">
-                        {member.profiles.full_name || member.profiles.email}
+                        {member.full_name || member.email}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {member.profiles.email}
+                        {member.email}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -294,10 +360,18 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
                           Owner
                         </Badge>
                       )}
-                      {member.role === 'member' && (
+                      {member.role === 'member' && member.source === 'shared_email' && (
+                        <Badge variant="outline" className="bg-green-50">
+                          <Mail className="w-3 h-3 mr-1" />
+                          Shared
+                        </Badge>
+                      )}
+                      {member.role === 'member' && member.source === 'card_member' && (
                         <Badge variant="outline">Member</Badge>
                       )}
-                      {member.user_id !== currentUserId && member.role !== 'owner' && !member.id.startsWith('owner-') && (
+                      
+                      {/* Remove button for non-owners and non-current-user */}
+                      {member.user_id !== currentUserId && member.role !== 'owner' && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="sm" className="text-red-600">
@@ -306,18 +380,26 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                              <AlertDialogTitle>Revoke Access</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to remove {member.profiles.email} from this card?
+                                Are you sure you want to revoke access for {member.email}? 
+                                They will no longer be able to view or add transactions to this card.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => removeMember(member.id, member.profiles.email)}
+                                onClick={() => {
+                                  if (member.source === 'shared_email') {
+                                    const index = parseInt(member.id.split('-')[1]);
+                                    removeSharedEmail(member.email, index);
+                                  } else {
+                                    removeMember(member.id, member.email);
+                                  }
+                                }}
                                 className="bg-red-600 hover:bg-red-700"
                               >
-                                Remove
+                                Revoke Access
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -389,6 +471,7 @@ const CardMembersDialog: React.FC<CardMembersDialogProps> = ({
               <InviteUserDialog
                 cardId={cardId}
                 cardName={cardName}
+                onInvitationChange={handleInvitationChange}
                 trigger={
                   <Button className="w-full">
                     <Mail className="w-4 h-4 mr-2" />

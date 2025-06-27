@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, Trash2, UserCheck, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -229,6 +228,13 @@ const PersonManager: React.FC<PersonManagerProps> = ({
               <InviteUserDialog 
                 cardId={selectedCard.id}
                 cardName={selectedCard.card_name}
+                onInvitationChange={() => {
+                  // Optionally refresh people list or show toast
+                  toast({
+                    title: "Invitation Status Changed",
+                    description: "The invitation has been updated",
+                  });
+                }}
                 trigger={
                   <Button variant="outline">
                     <Mail className="w-4 h-4 mr-2" />

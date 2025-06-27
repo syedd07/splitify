@@ -13,31 +13,42 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Link as LinkIcon, Copy, CheckCircle2 } from 'lucide-react';
+import { Loader2, Link as LinkIcon, Copy, CheckCircle2, Trash2, Clock, RefreshCw } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface InviteUserDialogProps {
   cardId: string;
   cardName: string;
   trigger: React.ReactNode;
+  onInvitationChange?: () => void;
+}
+
+interface PendingInvitation {
+  id: string;
+  invited_email: string;
+  expires_at: string;
+  created_at: string;
 }
 
 const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
   cardId,
   cardName,
-  trigger
+  trigger,
+  onInvitationChange
 }) => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [invitationUrl, setInvitationUrl] = useState('');
   const [invitationGenerated, setInvitationGenerated] = useState(false);
+  const [invitationId, setInvitationId] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
   const { toast } = useToast();
 
-  // Add an abort controller for API calls
   const abortControllerRef = useRef<AbortController | null>(null);
   
-  // Add cleanup on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -45,6 +56,38 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       }
     };
   }, []);
+
+  // Load pending invitations when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      loadPendingInvitations();
+    }
+  }, [isOpen, cardId]);
+
+  const loadPendingInvitations = async () => {
+    setLoadingInvitations(true);
+    try {
+      const { data: invitations, error } = await supabase
+        .from('card_invitations')
+        .select('id, invited_email, expires_at, created_at')
+        .eq('credit_card_id', cardId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setPendingInvitations(invitations || []);
+    } catch (error: any) {
+      console.error('Error loading pending invitations:', error);
+    } finally {
+      setLoadingInvitations(false);
+    }
+  };
+
+  const generateInviteUrl = (invitationId: string, email: string) => {
+    const encodedEmail = encodeURIComponent(email);
+    return `${window.location.origin}/auth?invite=${cardId}&email=${encodedEmail}&token=${invitationId}`;
+  };
 
   const handleGenerateInvite = async () => {
     if (!email.trim()) {
@@ -66,7 +109,6 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       return;
     }
 
-    // Create new abort controller
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -75,7 +117,6 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     setIsLoading(true);
     
     try {
-      // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError || !user) {
@@ -84,7 +125,6 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
       const inviteEmail = email.toLowerCase().trim();
 
-      // Check if user is trying to invite themselves
       if (inviteEmail === user.email?.toLowerCase()) {
         toast({
           title: "Error",
@@ -94,22 +134,38 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
-      // Get the card's current shared_emails
       const { data: cardData, error: cardError } = await supabase
         .from('credit_cards')
         .select('shared_emails, user_id')
         .eq('id', cardId)
         .single();
 
-      if (cardError) {
-        throw cardError;
-      }
+      if (cardError) throw cardError;
 
-      // Check if user owns this card
       if (cardData.user_id !== user.id) {
         toast({
           title: "Error",
           description: "Only card owners can send invitations",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check if there's already a pending invitation for this email
+      const { data: existingInvite, error: checkError } = await supabase
+        .from('card_invitations')
+        .select('id')
+        .eq('credit_card_id', cardId)
+        .eq('invited_email', inviteEmail)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (existingInvite) {
+        toast({
+          title: "Error",
+          description: "An invitation is already pending for this email address",
           variant: "destructive",
         });
         return;
@@ -128,17 +184,20 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         .select('id')
         .single();
         
-      if (inviteError) {
-        throw inviteError;
-      }
+      if (inviteError) throw inviteError;
 
-      // Generate invitation URL - use encodeURIComponent to properly handle special characters
-      const encodedEmail = encodeURIComponent(inviteEmail);
-      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodedEmail}&token=${invitationData.id}`;
+      const inviteUrl = generateInviteUrl(invitationData.id, inviteEmail);
       
-      // Store invite URL for display
       setInvitationUrl(inviteUrl);
+      setInvitationId(invitationData.id);
       setInvitationGenerated(true);
+      
+      // Refresh pending invitations list
+      await loadPendingInvitations();
+      
+      if (onInvitationChange) {
+        onInvitationChange();
+      }
       
       toast({
         title: "Invitation Created",
@@ -156,30 +215,107 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     }
   };
 
+  const handleCancelInvitation = async (invitationIdToCancel: string, emailToCancel: string) => {
+    setIsLoading(true);
+    
+    try {
+      const { error } = await supabase
+        .from('card_invitations')
+        .delete()
+        .eq('id', invitationIdToCancel);
+
+      if (error) throw error;
+
+      toast({
+        title: "Invitation Cancelled",
+        description: `Invitation to ${emailToCancel} has been cancelled`,
+      });
+
+      // If this was the currently generated invitation, reset the form
+      if (invitationIdToCancel === invitationId) {
+        setInvitationGenerated(false);
+        setInvitationUrl('');
+        setInvitationId('');
+        setEmail('');
+      }
+
+      // Refresh pending invitations list
+      await loadPendingInvitations();
+
+      if (onInvitationChange) {
+        onInvitationChange();
+      }
+    } catch (error: any) {
+      console.error('Error cancelling invitation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel invitation",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyInviteUrl = (invitationId: string, email: string) => {
+    const url = generateInviteUrl(invitationId, email);
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    
+    toast({
+      title: "Link Copied",
+      description: `Invitation link for ${email} copied to clipboard`,
+    });
+  };
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(invitationUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    
+    toast({
+      title: "Link Copied",
+      description: "Invitation link has been copied to clipboard",
+    });
   };
   
-  // Reset dialog state when closed
   const handleDialogChange = (open: boolean) => {
     if (!open) {
       if (isLoading && abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       
-      // Only reset if dialog is actually closing
       if (isOpen) {
         setTimeout(() => {
           setInvitationGenerated(false);
           setInvitationUrl('');
+          setInvitationId('');
           setEmail('');
           setIsLoading(false);
-        }, 300); // Slight delay to avoid visual glitch
+          setCopied(false);
+        }, 300);
       }
     }
     setIsOpen(open);
+  };
+
+  const isExpired = (expiresAt: string) => {
+    return new Date(expiresAt) < new Date();
+  };
+
+  const formatExpiryDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    
+    const day = date.getDate();
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    
+    return `${day} ${month}, ${year}`;
   };
 
   return (
@@ -187,21 +323,84 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Invite User</DialogTitle>
           <DialogDescription>
             {invitationGenerated 
-              ? "Share this link with the person you want to invite."
+              ? "Invitation created! You can copy the link again or cancel the invitation."
               : `Invite someone to access "${cardName}". They'll be able to view and add transactions to this card.`
             }
           </DialogDescription>
         </DialogHeader>
         
+        {/* Existing Pending Invitations */}
+        {pendingInvitations.length > 0 && (
+          <div className="border-b pb-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Pending Invitations ({pendingInvitations.length})
+              </h4>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadPendingInvitations}
+                disabled={loadingInvitations}
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingInvitations ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {pendingInvitations.map((invitation) => (
+                <div
+                  key={invitation.id}
+                  className={`flex items-center justify-between p-2 border rounded-lg text-sm ${
+                    isExpired(invitation.expires_at) ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{invitation.invited_email}</span>
+                    {isExpired(invitation.expires_at) ? (
+                      <Badge variant="destructive" className="text-xs">Expired</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-yellow-100">
+                        Expires: {formatExpiryDate(invitation.expires_at)}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {!isExpired(invitation.expires_at) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyInviteUrl(invitation.id, invitation.invited_email)}
+                        title="Copy invite link"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCancelInvitation(invitation.id, invitation.invited_email)}
+                      disabled={isLoading}
+                      className="text-red-600"
+                      title="Cancel invitation"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
         {invitationGenerated ? (
           <div className="grid gap-4 py-4">
             <div className="flex flex-col gap-2">
-              <Label>Share this invitation link</Label>
+              <Label>New Invitation Link for: {email}</Label>
               <div className="flex items-center gap-2">
                 <Input 
                   value={invitationUrl} 
@@ -213,6 +412,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
                   variant="outline"
                   onClick={copyToClipboard}
                   className="shrink-0"
+                  title="Copy link"
                 >
                   {copied ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                 </Button>
@@ -221,15 +421,45 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
                 This link will expire in 7 days and is specific to {email}
               </p>
             </div>
-            <div className="flex justify-between mt-4">
-              <Button variant="outline" onClick={() => {
-                setInvitationGenerated(false);
-                setInvitationUrl('');
-                setEmail('');
-              }}>
+            
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setInvitationGenerated(false);
+                  setInvitationUrl('');
+                  setInvitationId('');
+                  setEmail('');
+                }}
+                className="flex-1"
+              >
                 Create New Invitation
               </Button>
-              <Button variant="default" onClick={() => setIsOpen(false)}>
+              
+              <Button 
+                variant="destructive" 
+                onClick={() => handleCancelInvitation(invitationId, email)}
+                disabled={isLoading}
+                className="flex-1"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Cancel Invitation
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                variant="default" 
+                onClick={() => setIsOpen(false)}
+                className="flex-1"
+              >
                 Done
               </Button>
             </div>
