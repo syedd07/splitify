@@ -290,7 +290,7 @@ const CreditCardForm: React.FC<CreditCardFormProps> = ({ onCardAdded, onCancel }
         throw error;
       }
 
-      console.log('Card added successfully:', data?.id);
+      // console.log('Card added successfully:', data?.id);
       toast({
         title: "Success!",
         description: "Credit card added successfully",

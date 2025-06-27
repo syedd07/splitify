@@ -132,8 +132,9 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         throw inviteError;
       }
 
-      // Generate invitation URL
-      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodeURIComponent(inviteEmail)}&token=${invitationData.id}`;
+      // Generate invitation URL - use encodeURIComponent to properly handle special characters
+      const encodedEmail = encodeURIComponent(inviteEmail);
+      const inviteUrl = `${window.location.origin}/auth?invite=${cardId}&email=${encodedEmail}&token=${invitationData.id}`;
       
       // Store invite URL for display
       setInvitationUrl(inviteUrl);

@@ -144,15 +144,33 @@ const Auth = () => {
         // Will be updated to "accepted" after email verification
         if (data?.user) {
           try {
-            await supabase
-              .from('card_invitations')
-              .update({
-                status: 'processing',
-                updated_at: new Date().toISOString()
-              })
-              .eq('credit_card_id', inviteCardId)
-              .eq('invited_email', email.trim().toLowerCase())
-              .eq('status', 'pending');
+            const token = searchParams.get('token');
+            let updateQuery;
+            
+            if (token) {
+              // If we have a token, use it as the primary lookup method
+              updateQuery = supabase
+                .from('card_invitations')
+                .update({
+                  status: 'processing',
+                  invited_user_id: data.user.id,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', token);
+            } else {
+              // Fallback to the old method
+              updateQuery = supabase
+                .from('card_invitations')
+                .update({
+                  status: 'processing',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('credit_card_id', inviteCardId)
+                .eq('invited_email', email.trim().toLowerCase())
+                .eq('status', 'pending');
+            }
+            
+            await updateQuery;
           } catch (updateError) {
             console.error("Error updating invitation status:", updateError);
             // Non-critical error, don't show to user
@@ -369,213 +387,9 @@ const Auth = () => {
       setLoading(false);
     }
   };
+ 
 
-  // Add this function to the Auth component
-  const checkEmailVerificationStatus = async () => {
-    if (!email) return;
-    
-    try {
-      setLoading(true);
-      
-      // Get the current session to check if email is verified
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user && session.user.email === email.trim()) {
-        // Email is verified if email_confirmed_at exists
-        const isVerified = !!session.user.email_confirmed_at;
-        
-        if (isVerified && inviteCardId) {
-          // Email is verified and there's an invitation - proceed to onboarding
-          navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
-        } else if (!isVerified) {
-          toast({
-            title: "Email not verified",
-            description: "Please check your inbox and verify your email before continuing.",
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error checking verification status:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Verification status indicator for invited users
-  const renderInvitationStatus = () => {
-    if (!inviteCardId) return null;
-    
-    return (
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
-        <h3 className="text-sm font-medium text-blue-700 mb-1">Invitation Status</h3>
-        {user ? (
-          user.email_confirmed_at ? (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-sm">Email verified! Redirecting to shared card...</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-amber-600">
-              <Mail className="w-4 h-4" />
-              <span className="text-sm">Email verification required. Please check your inbox.</span>
-            </div>
-          )
-        ) : (
-          <div className="flex items-center gap-2 text-blue-600">
-            <UserPlus className="w-4 h-4" />
-            <span className="text-sm">Please sign up or log in to access the shared card.</span>
-          </div>
-        )}
-        {user && !user.email_confirmed_at && (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="mt-2 text-xs" 
-            onClick={checkEmailVerificationStatus}
-          >
-            I've verified my email
-          </Button>
-        )}
-      </div>
-    );
-  };
-
-  // Add this function to repair existing invited users
-  const repairInvitedUser = async () => {
-    if (!email.trim()) {
-      toast({
-        title: "Email required",
-        description: "Please enter your email address",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      // This will force a password reset to fix authentication issues
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/profile?reset=true`,
-      });
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Account repair initiated",
-        description: "Check your email to reset your password and fix your account",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Add this new function to handle invited users who need to set a password
-  const handleInvitedUserSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!fullName.trim()) {
-      toast({
-        title: "Full name required",
-        description: "Please enter your full name",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!password.trim() || password.length < 6) {
-      toast({
-        title: "Valid password required",
-        description: "Please enter a password with at least 6 characters",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setLoading(true);
-    
-    try {
-      // Update user with password and set the critical password_set flag
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password,
-        data: {
-          full_name: fullName.trim(),
-          invitation_type: 'card_invitation',
-          password_set: 'true', // This is the key flag!
-          card_id: inviteCardId || undefined
-        }
-      });
-      
-      if (updateError) throw updateError;
-      
-      // Now that password is set, create/update profile
-      // This will now pass the RLS check
-      if (user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: user.id,
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            updated_at: new Date().toISOString()
-          });
-          
-        // Handle error...
-      }
-      
-      toast({
-        title: "Account setup complete!",
-        description: "You can now access your shared card.",
-      });
-      
-      // Ensure we process the invitation properly
-      if (inviteCardId) {
-        // Get invitation details and update status if needed
-        const { data: inviteData } = await supabase
-          .from('card_invitations')
-          .select('*')
-          .eq('credit_card_id', inviteCardId)
-          .eq('invited_email', email.toLowerCase())
-          .eq('status', 'pending')
-          .maybeSingle();
-          
-        if (inviteData) {
-          // Update invitation status
-          await supabase
-            .from('card_invitations')
-            .update({
-              status: 'accepted',
-              invited_user_id: user.id,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', inviteData.id);
-        }
-      }
-      
-      // Redirect to onboarding after short delay
-      setTimeout(() => {
-        if (inviteCardId) {
-          navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
-        } else {
-          navigate('/onboarding');
-        }
-      }, 1500);
-    } catch (error: any) {
-      console.error("Account setup error:", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+ 
 
   // Add this new useEffect to check invitation validity on load
   useEffect(() => {
@@ -588,18 +402,54 @@ const Auth = () => {
         });
 
         try {
-          // Verify the invitation record exists and is valid
-          const { data, error } = await supabase
-            .from('card_invitations')
-            .select('expires_at, status')
-            .eq('credit_card_id', inviteCardId)
-            .eq('invited_email', decodeURIComponent(inviteEmail).toLowerCase())
-            .single();
-            
+          const decodedEmail = decodeURIComponent(inviteEmail);
+          console.log("Checking invitation for:", {
+            cardId: inviteCardId,
+            decodedEmail,
+            token: searchParams.get('token')
+          });
+
+          // First try finding by token (more reliable)
+          const token = searchParams.get('token');
+          let invitationQuery;
+          
+          if (token) {
+            // If we have a token, use it as the primary lookup method
+            invitationQuery = supabase
+              .from('card_invitations')
+              .select('expires_at, status, invited_email')
+              .eq('id', token)
+              .eq('credit_card_id', inviteCardId)
+              .maybeSingle(); // Use maybeSingle instead of single
+          } else {
+            // Fallback to email-based lookup
+            invitationQuery = supabase
+              .from('card_invitations')
+              .select('expires_at, status')
+              .eq('credit_card_id', inviteCardId)
+              .eq('invited_email', decodedEmail.toLowerCase())
+              .maybeSingle(); // Use maybeSingle instead of single
+          }
+          
+          const { data, error } = await invitationQuery;
+          
+          // Log for debugging
+          console.log("Invitation query result:", { data, error });
+          
           if (error || !data) {
             toast({
               title: "Invalid Invitation",
               description: "This invitation link is invalid or has been removed",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // If we found by token, verify the email matches
+          if (token && data.invited_email.toLowerCase() !== decodedEmail.toLowerCase()) {
+            toast({
+              title: "Email Mismatch",
+              description: "This invitation is for a different email address",
               variant: "destructive",
             });
             return;
@@ -771,40 +621,9 @@ const Auth = () => {
                     'Create Account'
                   )}
                 </Button>
-                {/* Special button for invited users who need to set password - SHOW MORE AGGRESSIVELY */}
-                {inviteEmail && (
-                  <Card className="mt-6 bg-green-50 border-green-200">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center gap-2 text-green-700 mb-3">
-                        <CheckCircle className="h-5 w-5" />
-                        <h3 className="font-medium">Invitation Accepted!</h3>
-                      </div>
-                      <p className="text-sm text-green-700 mb-4">
-                        Complete your account setup below to access your shared card.
-                      </p>
-                      <Button 
-                        type="button"
-                        onClick={handleInvitedUserSetup} 
-                        className="w-full bg-green-600 hover:bg-green-700"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Setting up account...
-                          </>
-                        ) : (
-                          'Complete Account Setup'
-                        )}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
               </form>
             </TabsContent>
           </Tabs>
-
-          {renderInvitationStatus()}
         </CardContent>
       </Card>
     </div>

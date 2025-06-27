@@ -264,7 +264,7 @@ export const  useRealtimeTransactions = ({
         is_common_split: Boolean(transaction.isCommonSplit) // Use Boolean constructor
       };
 
-      console.log('Inserting transaction to DB:', dbTransaction);
+      //console.log('Inserting transaction to DB:', dbTransaction);
 
       // CHANGE: Split the operation into insert and select
       // First, insert without returning data
@@ -302,7 +302,7 @@ export const  useRealtimeTransactions = ({
         return tempId;
       }
 
-      console.log('Transaction inserted successfully:', insertedData);
+      //console.log('Transaction inserted successfully:', insertedData);
       toast({
         title: "Success",
         description: "Transaction added successfully",
