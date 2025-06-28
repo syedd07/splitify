@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -49,6 +49,40 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   
+  // Reset states when dialog opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      // Reset form state when opening
+      setEmail('');
+      setInvitationUrl('');
+      setInvitationGenerated(false);
+      setInvitationId('');
+      setCopied(false);
+      setIsLoading(false);
+      
+      // Load pending invitations
+      loadPendingInvitations();
+    } else {
+      // Clean up when closing
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Reset all states after a short delay to avoid visual glitches
+      setTimeout(() => {
+        setEmail('');
+        setInvitationUrl('');
+        setInvitationGenerated(false);
+        setInvitationId('');
+        setCopied(false);
+        setIsLoading(false);
+        setPendingInvitations([]);
+        setLoadingInvitations(false);
+      }, 300);
+    }
+  }, [isOpen]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -57,14 +91,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     };
   }, []);
 
-  // Load pending invitations when dialog opens
-  useEffect(() => {
-    if (isOpen) {
-      loadPendingInvitations();
-    }
-  }, [isOpen, cardId]);
-
-  const loadPendingInvitations = async () => {
+  const loadPendingInvitations = useCallback(async () => {
     setLoadingInvitations(true);
     try {
       const { data: invitations, error } = await supabase
@@ -79,17 +106,17 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       setPendingInvitations(invitations || []);
     } catch (error: any) {
       console.error('Error loading pending invitations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load pending invitations",
+        variant: "destructive",
+      });
     } finally {
       setLoadingInvitations(false);
     }
-  };
+  }, [cardId, toast]);
 
-  const generateInviteUrl = (invitationId: string, email: string) => {
-    const encodedEmail = encodeURIComponent(email);
-    return `${window.location.origin}/auth?invite=${cardId}&email=${encodedEmail}&token=${invitationId}`;
-  };
-
-  const handleGenerateInvite = async () => {
+  const handleGenerateInvite = useCallback(async () => {
     if (!email.trim()) {
       toast({
         title: "Error",
@@ -109,6 +136,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       return;
     }
 
+    // Abort any existing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -134,6 +162,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
+      // Check card ownership
       const { data: cardData, error: cardError } = await supabase
         .from('credit_cards')
         .select('shared_emails, user_id')
@@ -151,7 +180,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
         return;
       }
 
-      // Check if there's already a pending invitation for this email
+      // Check for existing pending invitation
       const { data: existingInvite, error: checkError } = await supabase
         .from('card_invitations')
         .select('id')
@@ -213,9 +242,9 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [email, cardId, toast, loadPendingInvitations, onInvitationChange]);
 
-  const handleCancelInvitation = async (invitationIdToCancel: string, emailToCancel: string) => {
+  const handleCancelInvitation = useCallback(async (invitationIdToCancel: string, emailToCancel: string) => {
     setIsLoading(true);
     
     try {
@@ -255,9 +284,14 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     } finally {
       setIsLoading(false);
     }
+  }, [invitationId, toast, loadPendingInvitations, onInvitationChange]);
+
+  const generateInviteUrl = (invitationId: string, email: string) => {
+    const encodedEmail = encodeURIComponent(email);
+    return `${window.location.origin}/auth?invite=${cardId}&email=${encodedEmail}&token=${invitationId}`;
   };
 
-  const copyInviteUrl = (invitationId: string, email: string) => {
+  const copyInviteUrl = useCallback((invitationId: string, email: string) => {
     const url = generateInviteUrl(invitationId, email);
     navigator.clipboard.writeText(url);
     setCopied(true);
@@ -267,9 +301,9 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       title: "Link Copied",
       description: `Invitation link for ${email} copied to clipboard`,
     });
-  };
+  }, [toast]);
 
-  const copyToClipboard = () => {
+  const copyToClipboard = useCallback(() => {
     navigator.clipboard.writeText(invitationUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -278,33 +312,17 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
       title: "Link Copied",
       description: "Invitation link has been copied to clipboard",
     });
-  };
-  
-  const handleDialogChange = (open: boolean) => {
-    if (!open) {
-      if (isLoading && abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      
-      if (isOpen) {
-        setTimeout(() => {
-          setInvitationGenerated(false);
-          setInvitationUrl('');
-          setInvitationId('');
-          setEmail('');
-          setIsLoading(false);
-          setCopied(false);
-        }, 300);
-      }
-    }
+  }, [invitationUrl, toast]);
+
+  const handleDialogChange = useCallback((open: boolean) => {
     setIsOpen(open);
-  };
+  }, []);
 
-  const isExpired = (expiresAt: string) => {
+  const isExpired = useCallback((expiresAt: string) => {
     return new Date(expiresAt) < new Date();
-  };
+  }, []);
 
-  const formatExpiryDate = (dateString: string) => {
+  const formatExpiryDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     const monthNames = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -316,7 +334,7 @@ const InviteUserDialog: React.FC<InviteUserDialogProps> = ({
     const year = date.getFullYear();
     
     return `${day} ${month}, ${year}`;
-  };
+  }, []);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogChange}>

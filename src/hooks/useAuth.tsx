@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 type AuthContextType = {
@@ -6,6 +6,7 @@ type AuthContextType = {
   userProfile: any;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -15,50 +16,57 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (user?.id) {
+      const profile = await fetchUserProfile(user.id);
+      setUserProfile(profile);
+    }
+  }, [user?.id, fetchUserProfile]);
+
   useEffect(() => {
     let subscription: any = null;
+    let isMounted = true;
     
-    const fetchUserProfile = async (userId: string) => {
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-
-        if (error) throw error;
-        return data;
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
-        return null;
-      }
-    };
-
     const setupAuth = async () => {
       try {
         // Get initial session
         const { data: { session } } = await supabase.auth.getSession();
         
-        // Important: Set the user state ONCE after we have complete information
-        if (session?.user) {
+        if (session?.user && isMounted) {
           const profile = await fetchUserProfile(session.user.id);
           setUser(session.user);
           setUserProfile(profile);
-        } else {
+        } else if (isMounted) {
           setUser(null);
           setUserProfile(null);
         }
         
-        // Set up listener for auth changes - this runs AFTER initial setup
+        // Set up listener for auth changes
         const authSubscription = supabase.auth.onAuthStateChange(
           async (event, session) => {
             console.log("Auth state changed:", event);
             
-            if (session?.user) {
+            if (session?.user && isMounted) {
               const profile = await fetchUserProfile(session.user.id);
               setUser(session.user);
               setUserProfile(profile);
-            } else {
+            } else if (isMounted) {
               setUser(null);
               setUserProfile(null);
             }
@@ -67,32 +75,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         subscription = authSubscription.data.subscription;
       } finally {
-        // Always set loading to false when auth setup is complete
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     
     setupAuth();
     
     return () => {
+      isMounted = false;
       if (subscription) {
         subscription.unsubscribe();
       }
     };
-  }, []);
+  }, [fetchUserProfile]);
   
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
       setUser(null);
       setUserProfile(null);
+      
+      // Clear localStorage
+      localStorage.removeItem('selectedCard');
+      localStorage.removeItem('currentStep');
+      localStorage.removeItem('hasExistingTransactions');
     } catch (error) {
       console.error("Error signing out:", error);
+      throw error; // Re-throw so components can handle it
     }
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

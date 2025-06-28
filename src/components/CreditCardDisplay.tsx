@@ -9,7 +9,8 @@ import {
   Trash2, 
   Users,
   Crown,
-  UserCheck
+  UserCheck,
+  Mail
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import InviteUserDialog from './InviteUserDialog';
 import CardMembersDialog from './CardMembersDialog';
+import './CreditCardDisplay.css';
 
 interface CreditCardData {
   id: string;
@@ -33,6 +35,8 @@ interface CreditCardData {
   bin_info?: any;
   user_id?: string;
   role?: string;
+  shared_emails?: string[];
+  backgroundIndex?: number; // Add this for different backgrounds
 }
 
 interface CreditCardDisplayProps {
@@ -51,6 +55,20 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editName, setEditName] = useState(card.card_name);
+  
+  // Use backgroundIndex if provided, otherwise generate based on card ID
+  const [cardBackground] = useState(() => {
+    if (card.backgroundIndex) {
+      return card.backgroundIndex;
+    }
+    // Generate a consistent background based on card ID
+    const hash = card.id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    return Math.abs(hash % 25) + 1;
+  });
+  
   const { toast } = useToast();
 
   const isOwner = card.role === 'owner';
@@ -130,121 +148,223 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
     }
   };
 
-  const getCardGradient = (cardType?: string) => {
-    switch (cardType?.toLowerCase()) {
-      case 'visa':
-        return 'bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800';
-      case 'mastercard':
-        return 'bg-gradient-to-br from-red-600 via-orange-600 to-red-700';
-      case 'american express':
-      case 'amex':
-        return 'bg-gradient-to-br from-green-600 via-teal-600 to-green-700';
-      case 'rupay':
-        return 'bg-gradient-to-br from-purple-600 via-pink-600 to-purple-700';
-      default:
-        return 'bg-gradient-to-br from-gray-700 via-gray-800 to-gray-900';
+  // Get card brand from bin_info or card_type
+  const getCardBrand = () => {
+    if (card.bin_info?.brand) return card.bin_info.brand;
+    if (card.card_type) return card.card_type;
+    return 'Visa'; // default
+  };
+
+  // Get card type for the visual display
+  const getCardTypeForImage = () => {
+    const brand = getCardBrand().toLowerCase();
+    
+    // Special case for RuPay - use external image
+    if (brand === 'rupay') {
+      return 'rupay';
+    }
+    
+    // Convert the brand name to lowercase for the image naming convention
+    const brandMap: Record<string, string> = {
+      'visa': 'visa',
+      'mastercard': 'mastercard',
+      'american express': 'amex',
+      'discover': 'discover',
+      'diners club': 'diners',
+      'jcb': 'jcb',
+      'unionpay': 'visa', // Fallback to visa icon for UnionPay
+      'other': 'visa' // Fallback to visa icon for Other
+    };
+    
+    return brandMap[brand] || 'visa';
+  };
+
+  const formatCardNumber = (lastFour: string) => {
+    const cardType = getCardTypeForImage();
+    
+    if (cardType === 'amex') {
+      // AMEX format: **** ****** *XXXX
+      return `**** ****** *${lastFour}`;
+    } else {
+      // Other cards: **** **** **** XXXX
+      return `**** **** **** ${lastFour}`;
     }
   };
 
-  const getRoleBadgeColor = (role?: string) => {
-    switch (role) {
-      case 'owner':
-        return 'bg-yellow-500/90 text-yellow-50 border-yellow-400/50';
-      case 'member':
-        return 'bg-green-500/90 text-green-50 border-green-400/50';
-      default:
-        return 'bg-blue-500/90 text-blue-50 border-blue-400/50';
-    }
+  const getMemberCount = () => {
+    if (!card.shared_emails) return 0;
+    return Array.isArray(card.shared_emails) ? card.shared_emails.length : 0;
   };
 
   return (
     <Card 
-      className={`relative overflow-hidden transition-all duration-300 cursor-pointer transform hover:scale-105 ${
+      className={`relative overflow-hidden transition-all duration-300 cursor-pointer group ${
         isSelected 
-          ? 'ring-2 sm:ring-4 ring-blue-500 ring-offset-2 sm:ring-offset-4 shadow-xl scale-105' 
-          : 'hover:shadow-xl shadow-md'
-      } bg-white border border-gray-100 mx-auto w-full max-w-[350px] sm:max-w-none`}
+          ? 'ring-2 ring-blue-500 ring-offset-2 shadow-xl scale-105' 
+          : 'hover:shadow-xl shadow-md hover:scale-102'
+      } bg-white border-0 mx-auto w-full max-w-[300px] select-none`}
       onClick={() => onSelect(card.id)}
     >
       <CardContent className="p-0">
-        {/* Credit Card Visual */}
-        <div className={`p-6 text-white relative ${getCardGradient(card.issuing_bank)} shadow-inner`}>
-          {/* Selection indicator */}
-          {isSelected && (
-            <div className="absolute top-3 right-3 w-6 h-6 bg-white rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+        {/* Credit Card Visual - Similar to CreditCardForm */}
+        <div className="relative">
+          {/* Card Container */}
+          <div className="aspect-[1.6/1] relative overflow-hidden rounded-t-lg">
+            {/* Background Image */}
+            <div className="absolute inset-0">
+              <img
+                src={`https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/${cardBackground}.jpeg`}
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                alt="Card background"
+                draggable={false}
+                onError={(e) => {
+                  // Fallback to a gradient if image fails to load
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              {/* Fallback gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800"></div>
+              {/* Dark overlay for better text contrast */}
+              <div className="absolute inset-0 bg-black/20"></div>
             </div>
-          )}
-          
-          <div className="flex justify-between items-start mb-6">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-8 h-8 drop-shadow-sm" />
-              {card.is_primary && (
-                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm font-medium">
-                  Primary
-                </Badge>
+
+            {/* Card Content */}
+            <div className="relative z-10 p-4 sm:p-5 h-full flex flex-col text-white">
+              {/* Top Row */}
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-2">
+                  {/* Chip */}
+                  <img 
+                    src="https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/chip.png" 
+                    className="w-8 h-6 sm:w-10 sm:h-7 transition-transform duration-200 hover:scale-110"
+                    alt="Credit card chip"
+                    draggable={false}
+                  />
+                  
+                  {/* Primary Badge */}
+                  {card.is_primary && (
+                    <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm text-xs font-medium px-2 py-0.5 animate-pulse">
+                      Primary
+                    </Badge>
+                  )}
+                </div>
+                
+                {/* Card Brand Logo */}
+                <div className="h-6 sm:h-8 flex items-center">
+                  <img 
+                    src={getCardTypeForImage() === 'rupay' 
+                      ? "https://upload.wikimedia.org/wikipedia/commons/c/cb/Rupay-Logo.png" 
+                      : `https://raw.githubusercontent.com/muhammederdem/credit-card-form/master/src/assets/images/${getCardTypeForImage()}.png`
+                    }
+                    alt={getCardBrand()}
+                    className={`max-h-full max-w-[60px] sm:max-w-[80px] object-contain transition-transform duration-200 hover:scale-110 ${
+                      getCardTypeForImage() === 'rupay' ? 'h-8' : ''
+                    }`}
+                    draggable={false}
+                  />
+                </div>
+              </div>
+
+              {/* Card Number */}
+              <div className="flex-1 flex items-center">
+                <div className="font-mono text-lg sm:text-xl font-medium tracking-wider text-shadow transition-all duration-200 group-hover:tracking-widest">
+                  {formatCardNumber(card.last_four_digits)}
+                </div>
+              </div>
+
+              {/* Bottom Row */}
+              <div className="flex justify-between items-end">
+                {/* Card Name */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs opacity-80 mb-1">Card Name</div>
+                  <div className="font-medium text-sm sm:text-base truncate text-shadow">
+                    {card.card_name}
+                  </div>
+                </div>
+
+                {/* Menu Button - Positioned absolutely to avoid conflicts */}
+                {isOwner && (
+                  <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-white hover:bg-white/30 backdrop-blur-sm w-7 h-7 p-0 rounded-full transition-all duration-200 hover:scale-110 shadow-lg"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-white border shadow-lg z-50">
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setShowEditForm(true);
+                        }}>
+                          <Edit3 className="w-4 h-4 mr-2" />
+                          Edit Name
+                        </DropdownMenuItem>
+                        <CardMembersDialog 
+                          cardId={card.id} 
+                          cardName={card.card_name}
+                          trigger={
+                            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                              <Users className="w-4 h-4 mr-2" />
+                              Manage Members
+                            </DropdownMenuItem>
+                          }
+                        />
+                        <InviteUserDialog 
+                          cardId={card.id} 
+                          cardName={card.card_name}
+                          trigger={
+                            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                              <Mail className="w-4 h-4 mr-2" />
+                              Invite User
+                            </DropdownMenuItem>
+                          }
+                        />
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-red-600 focus:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete();
+                          }}
+                          disabled={isDeleting}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {isDeleting ? 'Deleting...' : 'Delete Card'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </div>
+
+              {/* Selection Indicator */}
+              {isSelected && (
+                <div className="absolute top-3 left-3 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-lg animate-bounce">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+                </div>
               )}
             </div>
-            
-            {isOwner && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 backdrop-blur-sm">
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white border shadow-lg">
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation();
-                    setShowEditForm(true);
-                  }}>
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit Name
-                  </DropdownMenuItem>
-                  <CardMembersDialog 
-                    cardId={card.id} 
-                    cardName={card.card_name}
-                    trigger={
-                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                        <Users className="w-4 h-4 mr-2" />
-                        Manage Members
-                      </DropdownMenuItem>
-                    }
-                  />
-                  <InviteUserDialog 
-                    cardId={card.id} 
-                    cardName={card.card_name}
-                    trigger={
-                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                        <Users className="w-4 h-4 mr-2" />
-                        Invite User
-                      </DropdownMenuItem>
-                    }
-                  />
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    className="text-red-600 focus:text-red-600"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete();
-                    }}
-                    disabled={isDeleting}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    {isDeleting ? 'Deleting...' : 'Delete Card'}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
+        </div>
 
-          {showEditForm ? (
-            <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+        {/* Edit Form Overlay */}
+        {showEditForm && (
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm z-30 flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-white rounded-lg p-4 w-full max-w-sm space-y-3 shadow-xl animate-in slide-in-from-bottom-4 duration-200">
+              <h4 className="font-semibold text-gray-800">Edit Card Name</h4>
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded text-white placeholder-white/70 backdrop-blur-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                 placeholder="Card name"
                 autoFocus
               />
@@ -252,70 +372,69 @@ const CreditCardDisplay: React.FC<CreditCardDisplayProps> = ({
                 <Button 
                   size="sm" 
                   onClick={handleEdit}
-                  className="bg-white/20 text-white border-white/30 hover:bg-white/30 backdrop-blur-sm"
+                  className="flex-1 transition-all duration-200 hover:scale-105"
                 >
                   Save
                 </Button>
                 <Button 
                   size="sm" 
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => {
                     setShowEditForm(false);
                     setEditName(card.card_name);
                   }}
-                  className="text-white hover:bg-white/20 backdrop-blur-sm"
+                  className="flex-1 transition-all duration-200 hover:scale-105"
                 >
                   Cancel
                 </Button>
               </div>
             </div>
-          ) : (
-            <>
-              <h3 className="text-xl font-bold mb-4 drop-shadow-sm">{card.card_name}</h3>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-lg font-mono tracking-wider drop-shadow-sm">
-                  •••• •••• •••• {card.last_four_digits}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm opacity-90 font-medium">
-                  {card.issuing_bank || card.card_type || 'Credit Card'}
-                </span>
-                <div className="flex items-center gap-2">
-                  {isOwner && (
-                    <Badge className={`${getRoleBadgeColor('owner')} backdrop-blur-sm font-medium`}>
-                      <Crown className="w-3 h-3 mr-1" />
-                      Owner
-                    </Badge>
-                  )}
-                  {isMember && (
-                    <Badge className={`${getRoleBadgeColor('member')} backdrop-blur-sm font-medium`}>
-                      <UserCheck className="w-3 h-3 mr-1" />
-                      Member
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Card Info Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+        <div className="px-4 py-3 bg-gray-50/80 backdrop-blur-sm transition-all duration-200 group-hover:bg-gray-100/80">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {card.card_type && (
-                <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
-                  {card.card_type.toUpperCase()}
+              {/* Role Badge */}
+              {isOwner && (
+                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 font-medium text-xs px-2 py-0.5 transition-all duration-200 hover:scale-105">
+                  <Crown className="w-3 h-3 mr-1" />
+                  Owner
+                </Badge>
+              )}
+              {isMember && (
+                <Badge className="bg-green-100 text-green-800 border-green-300 font-medium text-xs px-2 py-0.5 transition-all duration-200 hover:scale-105">
+                  <UserCheck className="w-3 h-3 mr-1" />
+                  Member
+                </Badge>
+              )}
+              
+              {/* Card Type */}
+              {card.bin_info?.type && (
+                <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium text-xs transition-all duration-200 hover:scale-105">
+                  {card.bin_info.type}
                 </Badge>
               )}
             </div>
-            {isSelected && (
-              <div className="flex items-center gap-1 text-blue-600 font-medium text-sm">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                Selected
-              </div>
-            )}
+            
+            <div className="flex items-center gap-2">
+              {/* Member Count for Owners */}
+              {isOwner && getMemberCount() > 0 && (
+                <div className="flex items-center gap-1 text-gray-600 text-xs transition-all duration-200 hover:scale-105">
+                  <Users className="w-3 h-3" />
+                  <span className="font-medium">{getMemberCount()}</span>
+                </div>
+              )}
+              
+              {/* Selection Status */}
+              {isSelected && (
+                <div className="flex items-center gap-1 text-blue-600 font-medium text-xs animate-pulse">
+                  <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                  Selected
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User, Menu } from 'lucide-react';
@@ -242,8 +242,8 @@ const Onboarding = () => {
     }
   };
 
-  // Update the fetchCreditCards function to properly handle the Json type
-  const fetchCreditCards = async (currentUser?: any) => {
+  // Update the fetchCreditCards function to use useCallback
+  const fetchCreditCards = useCallback(async (currentUser?: any) => {
     try {
       const userToUse = currentUser || user;
       if (!userToUse?.id) {
@@ -293,7 +293,7 @@ const Onboarding = () => {
         return {
           ...card,
           shared_emails: sharedEmails,
-          is_primary: isOwner && index === 0, // Only first owned card is primary
+          is_primary: isOwner && index === 0,
           role: isOwner ? 'owner' : isSharedWithUser ? 'member' : 'guest'
         };
       });
@@ -306,7 +306,6 @@ const Onboarding = () => {
         setSelectedCardId(cardsWithRoles[0].id);
       }
 
-      // Clear any error messages on successful fetch
       setErrorMessage('');
     } catch (error: any) {
       console.error('Error fetching credit cards:', error);
@@ -318,7 +317,7 @@ const Onboarding = () => {
         variant: "destructive",
       });
     }
-  };
+  }, [user, selectedCardId, toast]);
 
   const checkForExistingTransactions = async (cardId: string) => {
     try {
@@ -360,10 +359,24 @@ const Onboarding = () => {
     }
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
+  // Update the handleSignOut function
+  const handleSignOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      // Clear localStorage
+      localStorage.removeItem('selectedCard');
+      localStorage.removeItem('currentStep');
+      localStorage.removeItem('hasExistingTransactions');
+      navigate('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast({
+        title: "Error",
+        description: "Failed to sign out",
+        variant: "destructive",
+      });
+    }
+  }, [navigate, toast]);
 
   const handleStartSplitting = async () => {
     if (!selectedCardId) {

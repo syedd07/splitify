@@ -1,201 +1,98 @@
-import { useEffect, useState } from 'react';
+// Create this file if it doesn't exist, or update your existing callback logic:
+
+import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const inviteCardId = searchParams.get('invite');
-  const [processing, setProcessing] = useState(true);
   const { toast } = useToast();
 
-  // Add this function to properly sync profile data
-  const syncUserProfile = async (user) => {
-    if (!user) return;
-    
-    try {
-      // First check if profile exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-        
-      // Get user metadata for name
-      const fullName = user.user_metadata?.full_name || 
-                      user.user_metadata?.name || 
-                      user.user_metadata?.display_name;
-      
-      if (!existingProfile) {
-        // Create profile if doesn't exist
-        await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            full_name: fullName,
-            email: user.email,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-          
-        console.log("Created new profile for user");
-      } 
-      else if (!existingProfile.full_name && fullName) {
-        // Update profile if name is missing
-        await supabase
-          .from('profiles')
-          .update({
-            full_name: fullName,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', user.id);
-          
-        console.log("Updated existing profile with name");
-      }
-    } catch (error) {
-      console.error("Error syncing user profile:", error);
-    }
-  };
-
   useEffect(() => {
-    const handleEmailVerificationCallback = async () => {
+    const handleAuthCallback = async () => {
       try {
+        // Handle the auth callback
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('Auth callback error:', error);
           toast({
             title: "Authentication Error",
-            description: "There was an issue with your verification. Please try again.",
+            description: error.message,
             variant: "destructive"
           });
           navigate('/auth');
           return;
         }
-        
-        if (data.session && data.session.user) {
+
+        if (data.session?.user) {
           const user = data.session.user;
-          console.log("User authenticated:", user.id);
           
-          // Always sync profile first - this is crucial for login to work later
-          await syncUserProfile(user);
+          // Check if this was an invited user
+          const inviteCardId = searchParams.get('invite');
           
-          // Handle invitation if there is one
-          if (inviteCardId) {
+          if (inviteCardId && user.user_metadata?.invitation_type === 'card_invitation') {
             try {
-              console.log("Processing invitation for card:", inviteCardId);
-              
-              // 1. Get the invitation based on card ID and user email
-              const { data: inviteData, error: inviteError } = await supabase
+              // Find the invitation and complete the process
+              const { data: invitation, error: inviteError } = await supabase
                 .from('card_invitations')
-                .select('*')
+                .select('id')
                 .eq('credit_card_id', inviteCardId)
-                .eq('invited_email', user.email)
-                .eq('status', 'pending')
-                .single();
-                
-              if (inviteError || !inviteData) {
-                console.error('Error finding invitation:', inviteError);
-                // Continue to onboarding anyway
-                navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
-                return;
-              }
-              
-              console.log("Found invitation:", inviteData.id);
-              
-              // 2. Update the invitation status and set the user ID
-              const { error: updateError } = await supabase
-                .from('card_invitations')
-                .update({
-                  status: 'accepted',
-                  invited_user_id: user.id,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', inviteData.id);
-                
-              if (updateError) {
-                console.error('Error updating invitation:', updateError);
-              }
-              
-              // 3. Add the user to card_members
-              const { error: memberError } = await supabase
-                .from('card_members')
-                .insert({
-                  credit_card_id: inviteCardId,
-                  user_id: user.id,
-                  role: 'member'
-                });
-                
-              if (memberError) {
-                console.error('Error adding member:', memberError);
-                // If it's a duplicate key error, it's fine - user is already a member
-                if (!memberError.message.includes('duplicate key')) {
-                  throw memberError;
-                }
-              }
-              
-              // 4. Update the user's profile name if needed
-              if (user.user_metadata?.full_name) {
-                const { error: profileError } = await supabase
-                  .from('profiles')
+                .eq('invited_user_id', user.id)
+                .eq('status', 'accepted')
+                .maybeSingle();
+
+              if (!inviteError && invitation) {
+                // Make sure user is in card_members table
+                const { error: memberError } = await supabase
+                  .from('card_members')
                   .upsert({
-                    id: user.id,
-                    full_name: user.user_metadata.full_name,
-                    email: user.email,
-                    updated_at: new Date().toISOString()
+                    credit_card_id: inviteCardId,
+                    user_id: user.id,
+                    role: 'member'
+                  }, {
+                    onConflict: 'credit_card_id,user_id'
                   });
-                  
-                if (profileError) {
-                  console.error('Error updating profile:', profileError);
+
+                if (memberError && !memberError.message.includes('duplicate key')) {
+                  console.error("Error ensuring member exists:", memberError);
+                } else {
+                  toast({
+                    title: "Welcome!",
+                    description: "You now have access to the shared card.",
+                  });
                 }
               }
-              
-              console.log("Invitation processing completed successfully");
-              
-              // Navigate to onboarding with the card
-              navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
-            } catch (inviteProcessError) {
-              console.error('Error processing invitation:', inviteProcessError);
-              // Continue to onboarding anyway
-              navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
+            } catch (error) {
+              console.error('Error completing invitation process:', error);
             }
+          }
+          
+          // Redirect to the appropriate page
+          if (inviteCardId) {
+            navigate(`/onboarding?invite=true&cardId=${inviteCardId}`);
           } else {
             navigate('/onboarding');
           }
         } else {
-          // No session, redirect to auth
           navigate('/auth');
         }
       } catch (error) {
-        console.error('Error in auth callback:', error);
+        console.error('Callback handling error:', error);
         navigate('/auth');
-      } finally {
-        setProcessing(false);
       }
     };
 
-    handleEmailVerificationCallback();
-  }, [navigate, inviteCardId, toast]);
+    handleAuthCallback();
+  }, [navigate, searchParams, toast]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-6" />
-        <h2 className="text-2xl font-semibold text-gray-800 mb-3">
-          {processing ? "Verifying your account..." : "Verification complete!"}
-        </h2>
-        <p className="text-gray-600 mb-6">
-          {processing 
-            ? "Please wait while we complete the verification process." 
-            : "You'll be redirected automatically in a moment."}
-        </p>
-        {!processing && (
-          <div className="animate-pulse">
-            <p className="text-blue-600">Redirecting...</p>
-          </div>
-        )}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-lg text-muted-foreground">Completing your invitation...</p>
       </div>
     </div>
   );
