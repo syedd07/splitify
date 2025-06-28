@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Receipt, Banknote, Calendar } from 'lucide-react';
+import { Plus, Trash2, Receipt, Banknote, Calendar, CheckCircle, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -43,17 +43,57 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [loading, setLoading] = useState(false);
   const [isCardMember, setIsCardMember] = useState(false);
   const [currentUserPerson, setCurrentUserPerson] = useState<Person | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
-  // Helper function to get person name by ID
-  const getPersonNameById = (personId: string) => {
-   // console.log('Looking for person with ID:', personId, 'in people array:', people);
-    const person = people.find(p => p.id === personId);
-    if (person) {
-      //  console.log('Found person:', person.name);
-      return person ? person.name : personId;
+  // Helper function to get person name - now that spentBy stores names directly
+  const getPersonDisplayName = (spentByValue: string) => {
+   // console.log('🔍 Getting display name for:', spentByValue);
+    
+    // If spentBy is already a name (from database), return it directly
+    if (spentByValue && !spentByValue.includes('-') && !spentByValue.startsWith('guest_') && spentByValue.length < 50) {
+    //  console.log('✅ Using stored name:', spentByValue);
+      return spentByValue;
     }
-   // console.log('Person not found, returning ID as fallback:', personId);
-    return personId; // Fallback to ID if person not found
+    
+    // Handle guest IDs (starts with 'guest_')
+    if (spentByValue && spentByValue.startsWith('guest_')) {
+      // Try to find guest in people array by ID
+      const guestPerson = people.find(p => p.id === spentByValue);
+      if (guestPerson) {
+       // console.log('✅ Found guest person by ID:', guestPerson.name);
+        return guestPerson.name;
+      }
+      // console.log('⚠️ Guest not found in people array, using fallback');
+      return 'Guest User';
+    }
+    
+    // Fallback: try to find person by ID (for backward compatibility)
+    const person = people.find(p => 
+      p.id === spentByValue || 
+      ('user_id' in p && p.user_id === spentByValue)
+    );
+    
+    if (person) {
+     // console.log('✅ Found person by ID lookup:', person.name);
+      return person.name;
+    }
+    
+    // Special case: Check if spentByValue matches currentUser.id
+    if (currentUser && spentByValue === currentUser.id) {
+      // This transaction was made by the current user
+      if (userProfile?.full_name) {
+       // console.log('✅ Using current user full_name:', userProfile.full_name);
+        return userProfile.full_name;
+      }
+      if (userProfile?.email) {
+       // console.log('✅ Using current user email:', userProfile.email);
+        return userProfile.email;
+      }
+    }
+
+    // console.log('⚠️ Could not resolve name, using fallback');
+    return 'Unknown User';
   };
 
   // Check if current user is card member and set default spentBy
@@ -105,6 +145,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const handleAddExpense = async () => {
     try {
       setLoading(true);
+      setConnectionStatus('reconnecting');
       
       // Validation
       if (!amount || !description || !date || !spentBy) {
@@ -113,7 +154,17 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           description: "Please fill in all fields",
           variant: "destructive"
         });
-        setLoading(false);
+        return;
+      }
+
+      // Find the person to get their name
+      const selectedPerson = people.find(p => p.id === spentBy);
+      if (!selectedPerson) {
+        toast({
+          title: "Error",
+          description: "Selected person not found",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -123,27 +174,41 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         date,
         type: 'expense',
         category,
-        spentBy,
-        isCommonSplit: category === 'common'
+        spentBy: selectedPerson.name, // Store person's name, not ID
+        isCommonSplit: category === 'common',
+        month,
+        year,
+        user_id: currentUser?.id,
+        credit_card_id: selectedCard?.id
       };
 
       const id = await addTransaction(transaction);
       
-      // Clear the form
-      setAmount('');
-      setDescription('');
-      setDate('');
-      setCategory('personal');
+      // Enhanced success feedback
+      setConnectionStatus('connected');
+      setLastSyncTime(new Date());
       
+      // Smart form reset
+      resetForm();
+      
+      // Success animation
       toast({
-        title: "Success",
-        description: "Expense added successfully",
+        title: "✅ Expense Added",
+        description: `₹${amount} for ${description} has been saved`,
+        className: "border-green-500 bg-green-50",
       });
+
+      // Auto-focus on amount field for quick entry
+      setTimeout(() => {
+        const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
+        amountInput?.focus();
+      }, 100);
+
     } catch (error) {
+      setConnectionStatus('disconnected');
       console.error('Failed to add expense:', error);
-      // Toast is already shown in addTransaction
     } finally {
-      setLoading(false); // Always reset loading state
+      setLoading(false);
     }
   };
 
@@ -169,13 +234,28 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
     setLoading(true);
     try {
+      // Find the person to get their name
+      const selectedPerson = people.find(p => p.id === spentBy);
+      if (!selectedPerson) {
+        toast({
+          title: "Error",
+          description: "Selected person not found",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const transaction: Omit<Transaction, 'id'> = {
         amount: parseFloat(amount),
         description,
         date,
         type: 'payment',
         category: 'personal',
-        spentBy
+        spentBy: selectedPerson.name, // Store person's name, not ID
+        month,
+        year,
+        user_id: currentUser?.id,
+        credit_card_id: selectedCard?.id
       };
 
       // Save to database - real-time sync will handle UI updates
@@ -204,7 +284,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     // Card owners can delete any transaction
     const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
     
-    if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.id) {
+    // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+    if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.name) {
       toast({
         title: "Access Restricted",
         description: "You can only delete your own transactions.",
@@ -255,6 +336,33 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     }
     return people;
   };
+
+  // Add connection status indicator in your component
+  const ConnectionStatusBadge = () => (
+    <div className="flex items-center gap-2 text-xs">
+      {connectionStatus === 'connected' && (
+        <>
+          <Wifi className="w-3 h-3 text-green-500" />
+          <span className="text-green-600">Live</span>
+        </>
+      )}
+      {connectionStatus === 'disconnected' && (
+        <>
+          <WifiOff className="w-3 h-3 text-red-500" />
+          <span className="text-red-600">Offline</span>
+        </>
+      )}
+      {connectionStatus === 'reconnecting' && (
+        <>
+          <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />
+          <span className="text-yellow-600">Syncing...</span>
+        </>
+      )}
+      <span className="text-muted-foreground">
+        Last sync: {lastSyncTime.toLocaleTimeString()}
+      </span>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -451,6 +559,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         </TabsContent>
       </Tabs>
 
+      {/* Connection Status Badge - Add this section */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <ConnectionStatusBadge />
+      </div>
+
       {/* Transaction History */}
       {transactions.length > 0 && (
         <Card>
@@ -481,9 +594,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
-                      const personName = getPersonNameById(transaction.spentBy);
+                      const personName = getPersonDisplayName(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
-                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
                       
                     //  console.log('Rendering expense transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       
@@ -528,9 +642,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
-                      const personName = getPersonNameById(transaction.spentBy);
+                      const personName = getPersonDisplayName(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
-                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
                       
                      // console.log('Rendering payment transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       

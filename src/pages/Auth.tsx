@@ -96,7 +96,7 @@ const Auth = () => {
     return () => subscription.unsubscribe();
   }, [navigate, inviteCardId, inviteEmail, user, toast, searchParams]);
 
-  // Modify the existing handleSignUp function in Auth.tsx
+  // Update the handleSignUp function to better handle database errors:
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -116,14 +116,35 @@ const Auth = () => {
       
       console.log("Starting signup with email:", email);
 
+      // Clean the inputs
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanFullName = fullName.trim();
+
+      // First check if user already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (existingUser) {
+        toast({
+          title: "Account exists",
+          description: "An account with this email already exists. Please sign in instead.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       // Do the regular signup flow - this creates the user properly
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         password,
         options: {
           emailRedirectTo: redirectUrl,
           data: {
-            full_name: fullName.trim(),
+            full_name: cleanFullName,
             invitation_type: inviteCardId ? 'card_invitation' : undefined,
             card_id: inviteCardId || undefined,
             password_set: 'true' // Mark password as set immediately
@@ -131,7 +152,31 @@ const Auth = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Signup error details:", error);
+        
+        // Handle specific database errors
+        if (error.message.includes("Database error saving new user")) {
+          toast({
+            title: "Account Creation Issue",
+            description: "There was a problem creating your account. Please try again in a moment.",
+            variant: "destructive",
+          });
+        } else if (error.message.includes("User already registered")) {
+          toast({
+            title: "Account exists",
+            description: "An account with this email already exists. Please sign in instead.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+        throw error;
+      }
       
       // Show success message
       if (inviteCardId) {
@@ -140,10 +185,12 @@ const Auth = () => {
           description: "Please check your email to verify your account.",
         });
         
-        // Update invitation status to "processing" to prevent multiple signups with same link
-        // Will be updated to "accepted" after email verification
+        // Process the invitation immediately after successful signup
         if (data?.user) {
           try {
+            // Wait a moment for the profile to be created by the trigger
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             const token = searchParams.get('token');
             let updateQuery;
             
@@ -152,7 +199,7 @@ const Auth = () => {
               updateQuery = supabase
                 .from('card_invitations')
                 .update({
-                  status: 'processing',
+                  status: 'accepted',
                   invited_user_id: data.user.id,
                   updated_at: new Date().toISOString()
                 })
@@ -162,17 +209,25 @@ const Auth = () => {
               updateQuery = supabase
                 .from('card_invitations')
                 .update({
-                  status: 'processing',
+                  status: 'accepted',
+                  invited_user_id: data.user.id,
                   updated_at: new Date().toISOString()
                 })
                 .eq('credit_card_id', inviteCardId)
-                .eq('invited_email', email.trim().toLowerCase())
+                .eq('invited_email', cleanEmail)
                 .eq('status', 'pending');
             }
             
-            await updateQuery;
+            const { error: updateError } = await updateQuery;
+            
+            if (updateError) {
+              console.error("Error updating invitation status:", updateError);
+            } else {
+              // Note: Don't add to card_members here - let the trigger handle it
+              console.log("Invitation status updated to accepted");
+            }
           } catch (updateError) {
-            console.error("Error updating invitation status:", updateError);
+            console.error("Error processing invitation during signup:", updateError);
             // Non-critical error, don't show to user
           }
         }
@@ -184,11 +239,7 @@ const Auth = () => {
       }
     } catch (error: any) {
       console.error("Signup error:", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      // Error toast is already handled above
     } finally {
       setLoading(false);
     }

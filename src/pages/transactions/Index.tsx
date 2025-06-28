@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings, Menu } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings, Menu, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -48,6 +49,11 @@ const Index = () => {
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [showCardSelector, setShowCardSelector] = useState(false);
   const [cardsLoading, setCardsLoading] = useState(false);
+  const [stepCompletion, setStepCompletion] = useState({
+    setup: false,
+    transactions: false,
+    summary: false
+  });
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -175,66 +181,174 @@ const Index = () => {
   initializeData();
 }, [user, authLoading]);
 
+  // Update the fetchUserCards function to handle the 406 error:
   const fetchUserCards = async (userId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('credit_cards')
-      .select('*')
-      .eq('user_id', userId);
-
-    if (error) throw error;
-    setAvailableCards(data || []);
-    
-    // If no cards are found, make sure to handle it gracefully
-    if (!data || data.length === 0) {
-      console.log('No cards found for user');
-    }
-  } catch (error) {
-    console.error('Error fetching user cards:', error);
-    toast({
-      title: "Error",
-      description: "Failed to load your cards. Please try again.",
-      variant: "destructive",
-    });
-    // Reset available cards to prevent stale data
-    setAvailableCards([]);
-  }
-};
-
-  const fetchPeopleForCard = async (cardId: string) => {
     try {
-      // @ts-ignore - Skip type checking for this complex query
-      const result = await supabase
-        .from('card_members')
-        .select('user_id')
-        .eq('card_id', cardId);
+      // Fetch cards using RLS - let the policies handle access control
+      const { data, error } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .order('created_at', { ascending: true });
 
-      if (result.error) throw result.error;
+      if (error) throw error;
+      
+      // Transform cards to include role information
+      const cardsWithRoles = await Promise.all((data || []).map(async (card) => {
+        const isOwner = card.user_id === userId;
+        
+        let role = 'guest';
+        if (isOwner) {
+          role = 'owner';
+        } else {
+          // Check if user is a card member - handle 406 error gracefully
+          try {
+            const { data: memberData, error: memberError } = await supabase
+              .from('card_members')
+              .select('role')
+              .eq('credit_card_id', card.id)
+              .eq('user_id', userId)
+              .maybeSingle(); // Use maybeSingle instead of single to handle no results
 
-      // Simple type assertion
-      const memberIds = (result.data || []).map((member: any) => member.user_id);
+            if (memberError) {
+              console.warn('Error checking card membership:', memberError);
+              // Continue to check shared_emails if member check fails
+            } else if (memberData) {
+              role = memberData.role || 'member';
+            }
+          } catch (memberCheckError) {
+            console.warn('Failed to check card membership:', memberCheckError);
+            // Continue to shared_emails check
+          }
+          
+          // If no membership found, check shared_emails
+          if (role === 'guest') {
+            try {
+              const { data: userProfile } = await supabase
+                .from('profiles')
+                .select('email')
+                .eq('id', userId)
+                .single();
+              
+              if (userProfile && card.shared_emails && Array.isArray(card.shared_emails)) {
+                const isInSharedEmails = card.shared_emails.some(email => 
+                  String(email).toLowerCase() === String(userProfile.email).toLowerCase()
+                );
+                if (isInSharedEmails) {
+                  role = 'member';
+                }
+              }
+            } catch (profileError) {
+              console.warn('Error checking user profile for shared emails:', profileError);
+            }
+          }
+        }
+        
+        return {
+          ...card,
+          role
+        };
+      }));
+      
+      // Only return cards where user has access (not guest)
+      const accessibleCards = cardsWithRoles.filter(card => card.role !== 'guest');
+      setAvailableCards(accessibleCards);
+    } catch (error) {
+      console.error('Error fetching user cards:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your cards. Please try again.",
+        variant: "destructive",
+      });
+      setAvailableCards([]);
+    }
+  };
 
-      // Include the card owner in people
-      if (selectedCard && !memberIds.includes(selectedCard.user_id)) {
-        memberIds.push(selectedCard.user_id);
+  // Keep your existing fetchPeopleForCard function in Index.tsx instead of the hook:
+  const fetchPeopleForCard = useCallback(async (cardId: string) => {
+    try {
+      const peopleSet = new Set();
+      const newPeople: Person[] = [];
+
+      // Get card owner first
+      const { data: cardData, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('user_id, shared_emails')
+        .eq('id', cardId)
+        .single();
+
+      if (cardError) throw cardError;
+
+      if (cardData?.user_id) {
+        // Get profile data separately
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('id', cardData.user_id)
+          .single();
+          
+        if (!profileError && profileData) {
+          // Add card owner
+          newPeople.push({
+            id: cardData.user_id,
+            name: profileData.full_name || profileData.email,
+            isCardOwner: true
+          });
+          peopleSet.add(cardData.user_id);
+        }
       }
 
-      // Get profiles
-      // @ts-ignore - Skip type checking
-      const profilesResult = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .in('id', memberIds);
+      // Get card members separately
+      const { data: members, error: membersError } = await supabase
+        .from('card_members')
+        .select('user_id')
+        .eq('credit_card_id', cardId);
 
-      if (profilesResult.error) throw profilesResult.error;
-      const profiles = profilesResult.data;
+      if (membersError) throw membersError;
 
-      // Format into people array
-      const newPeople: Person[] = profiles.map(profile => ({
-        id: profile.id,
-        name: profile.full_name || profile.email,
-        isCardOwner: profile.id === selectedCard?.user_id
-      }));
+      // Get profiles for all member user_ids
+      if (members && members.length > 0) {
+        const memberUserIds = members.map(m => m.user_id);
+        
+        const { data: memberProfiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', memberUserIds);
+
+        if (profilesError) throw profilesError;
+
+        if (memberProfiles) {
+          memberProfiles.forEach(profile => {
+            if (!peopleSet.has(profile.id)) {
+              newPeople.push({
+                id: profile.id,
+                name: profile.full_name || profile.email,
+                isCardOwner: false
+              });
+              peopleSet.add(profile.id);
+            }
+          });
+        }
+      }
+
+      // Handle shared_emails (for backward compatibility)
+      if (cardData?.shared_emails && Array.isArray(cardData.shared_emails)) {
+        for (const email of cardData.shared_emails) {
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .eq('email', String(email).toLowerCase())
+            .single();
+
+          if (userProfile && !peopleSet.has(userProfile.id)) {
+            newPeople.push({
+              id: userProfile.id,
+              name: userProfile.full_name || userProfile.email,
+              isCardOwner: false
+            });
+            peopleSet.add(userProfile.id);
+          }
+        }
+      }
 
       setPeople(newPeople);
       return newPeople;
@@ -247,7 +361,7 @@ const Index = () => {
       });
       return [];
     }
-  };
+  }, [toast]);
 
   const handleCardSelect = (cardId: string) => {
     const card = availableCards.find(c => c.id === cardId);
@@ -371,6 +485,176 @@ const Index = () => {
     );
   }
 
+  // Update step completion tracking
+  useEffect(() => {
+    const completion = {
+      setup: selectedCard && selectedMonth && selectedYear && people.length >= 2,
+      transactions: transactions.length > 0,
+      summary: currentStep === 'summary'
+    };
+    setStepCompletion(completion);
+    localStorage.setItem('stepCompletion', JSON.stringify(completion));
+  }, [selectedCard, selectedMonth, selectedYear, people.length, transactions.length, currentStep]);
+
+  // Enhanced progress indicator
+  const ProgressSteps = () => (
+    <div className="flex items-center justify-center mb-6 sm:mb-8 px-2">
+      <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto pb-2">
+        {/* Step 1: Setup */}
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
+          currentStep === 'setup' 
+            ? 'text-blue-600 scale-105' 
+            : stepCompletion.setup 
+            ? 'text-green-600' 
+            : 'text-gray-400'
+        }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+            currentStep === 'setup' 
+              ? 'bg-blue-600 text-white shadow-lg' 
+              : stepCompletion.setup 
+              ? 'bg-green-600 text-white' 
+              : 'bg-gray-200'
+          }`}>
+            {stepCompletion.setup ? (
+              <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+            ) : (
+              <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+            )}
+          </div>
+          <span className="font-medium text-xs sm:text-sm">Setup</span>
+          {stepCompletion.setup && (
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          )}
+        </div>
+
+        {/* Progress Line 1 */}
+        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${
+          stepCompletion.setup ? 'bg-green-600' : 'bg-gray-200'
+        }`}></div>
+
+        {/* Step 2: Transactions */}
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
+          currentStep === 'transactions' 
+            ? 'text-blue-600 scale-105' 
+            : stepCompletion.transactions 
+            ? 'text-green-600' 
+            : 'text-gray-400'
+        }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+            currentStep === 'transactions' 
+              ? 'bg-blue-600 text-white shadow-lg' 
+              : stepCompletion.transactions 
+              ? 'bg-green-600 text-white' 
+              : 'bg-gray-200'
+          }`}>
+            {stepCompletion.transactions ? (
+              <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+            ) : (
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+            )}
+          </div>
+          <span className="font-medium text-xs sm:text-sm hidden sm:inline">Add Expenses & Payments</span>
+          <span className="font-medium text-xs sm:text-sm sm:hidden">Expenses</span>
+          {currentStep === 'transactions' && (
+            <Badge variant="secondary" className="text-xs">
+              {transactions.length} items
+            </Badge>
+          )}
+        </div>
+
+        {/* Progress Line 2 */}
+        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${
+          stepCompletion.transactions ? 'bg-green-600' : 'bg-gray-200'
+        }`}></div>
+
+        {/* Step 3: Calculate */}
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
+          currentStep === 'summary' ? 'text-blue-600 scale-105' : 'text-gray-400'
+        }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+            currentStep === 'summary' 
+              ? 'bg-blue-600 text-white shadow-lg' 
+              : 'bg-gray-200'
+          }`}>
+            <Calculator className="w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+          <span className="font-medium text-xs sm:text-sm">Calculate</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Add quick action buttons and smart navigation
+
+  // Add floating action button for quick expense entry
+  const QuickActionFAB = () => (
+    <div className="fixed bottom-6 right-6 z-50">
+      {currentStep === 'transactions' && (
+        <Button
+          size="lg"
+          className="rounded-full w-14 h-14 shadow-lg bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+          onClick={() => {
+            // Auto-focus on amount input
+            setTimeout(() => {
+              const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
+              amountInput?.focus();
+              amountInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          }}
+        >
+          <Plus className="w-6 h-6" />
+        </Button>
+      )}
+    </div>
+  );
+
+  // Add smart navigation suggestions
+  const NavigationSuggestions = () => (
+    <div className="max-w-4xl mx-auto mb-6">
+      {currentStep === 'setup' && stepCompletion.setup && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <span className="font-medium">Setup complete!</span>
+                <span className="text-sm text-muted-foreground">Ready to add transactions</span>
+              </div>
+              <Button 
+                onClick={() => setCurrentStep('transactions')}
+                size="sm"
+                className="ml-4"
+              >
+                Continue →
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {currentStep === 'transactions' && transactions.length > 0 && (
+        <Card className="bg-green-50 border-green-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-5 h-5 text-blue-600" />
+                <span className="font-medium">{transactions.length} transactions added</span>
+                <span className="text-sm text-muted-foreground">Ready to calculate splits</span>
+              </div>
+              <Button 
+                onClick={() => setCurrentStep('summary')}
+                size="sm"
+                className="ml-4"
+              >
+                Calculate →
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
       <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
@@ -467,7 +751,7 @@ const Index = () => {
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <Card className="max-w-sm sm:max-w-md mx-auto bg-white/80 backdrop-blur-sm">
                   <CardContent className="p-4 sm:p-6">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
                     <h3 className="text-base sm:text-lg font-semibold mb-2">Loading Cards</h3>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       Getting your credit cards ready...
@@ -482,7 +766,7 @@ const Index = () => {
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <Card className="max-w-sm sm:max-w-md mx-auto bg-white/80 backdrop-blur-sm">
                   <CardContent className="p-4 sm:p-6">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
                     <h3 className="text-base sm:text-lg font-semibold mb-2">Loading Transactions</h3>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       Syncing your data in real-time...
@@ -496,31 +780,7 @@ const Index = () => {
             {!cardsLoading && (
               <>
                 {/* Responsive Progress Steps */}
-                <div className="flex items-center justify-center mb-6 sm:mb-8 px-2">
-                  <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto pb-2">
-                    <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ${currentStep === 'setup' ? 'text-blue-600' : currentStep === 'transactions' || currentStep === 'summary' ? 'text-green-600' : 'text-gray-400'}`}>
-                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${currentStep === 'setup' ? 'bg-blue-600 text-white' : currentStep === 'transactions' || currentStep === 'summary' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
-                        <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                      </div>
-                      <span className="font-medium text-xs sm:text-sm">Setup</span>
-                    </div>
-                    <div className={`w-4 sm:w-8 h-1 flex-shrink-0 ${currentStep === 'transactions' || currentStep === 'summary' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-                    <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ${currentStep === 'transactions' ? 'text-blue-600' : currentStep === 'summary' ? 'text-green-600' : 'text-gray-400'}`}>
-                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${currentStep === 'transactions' ? 'bg-blue-600 text-white' : currentStep === 'summary' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
-                        <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                      </div>
-                      <span className="font-medium text-xs sm:text-sm hidden sm:inline">Add Expenses & Payments</span>
-                      <span className="font-medium text-xs sm:text-sm sm:hidden">Expenses</span>
-                    </div>
-                    <div className={`w-4 sm:w-8 h-1 flex-shrink-0 ${currentStep === 'summary' ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-                    <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 ${currentStep === 'summary' ? 'text-blue-600' : 'text-gray-400'}`}>
-                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${currentStep === 'summary' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>
-                        <Calculator className="w-3 h-3 sm:w-4 sm:h-4" />
-                      </div>
-                      <span className="font-medium text-xs sm:text-sm">Calculate</span>
-                    </div>
-                  </div>
-                </div>
+                <ProgressSteps />
 
                 {/* Setup Step */}
                 {currentStep === 'setup' && (
