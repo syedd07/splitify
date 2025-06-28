@@ -1,20 +1,26 @@
-
 export interface Person {
   id: string;
   name: string;
-  isCardOwner?: boolean;
+  isCardOwner: boolean;
+  role?: 'owner' | 'member' | 'guest';
+  email?: string;
+  user_id?: string;
 }
 
 export interface Transaction {
   id: string;
   amount: number;
   description: string;
-  date: string;
-  type: 'expense' | 'payment'; // New field to distinguish expenses from payments
-  category: 'personal' | 'common'; // For expenses only, payments are always personal
-  spentBy: string; // person id
-  splitBetween?: string[]; // person ids for common expenses
-  isCommonSplit?: boolean; // to identify individual splits from common expenses
+  date: string; // This maps to transaction_date
+  type: 'expense' | 'payment'; // This maps to transaction_type
+  category: 'personal' | 'common';
+  spentBy: string; // This should store person NAME, not ID (matches spent_by_person_name)
+  splitBetween?: string[];
+  isCommonSplit?: boolean; // This maps to is_common_split
+  month?: string; // Add these to match DB schema
+  year?: string;
+  user_id?: string; // Add to match DB schema
+  credit_card_id?: string; // Add to match DB schema
 }
 
 export interface PersonBalance {

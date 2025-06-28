@@ -112,7 +112,7 @@ export const useRealtimeTransactions = ({
             filter: `credit_card_id=eq.${cardId}`,
           },
           (payload) => {
-            console.log("Real-time transaction update:", payload);
+           // console.log("Real-time transaction update:", payload);
             if (isMounted) {
               // Reload transactions when changes occur
               loadTransactions();
@@ -135,7 +135,7 @@ export const useRealtimeTransactions = ({
   // NO useCallback to avoid circular dependencies
   const addTransaction = async (transaction: Omit<Transaction, "id">) => {
     try {
-      console.log("Adding transaction:", transaction);
+    //  console.log("Adding transaction:", transaction);
 
       // Convert month name to number
       const monthIndex =

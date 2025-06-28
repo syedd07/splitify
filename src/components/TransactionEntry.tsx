@@ -46,16 +46,54 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
-  // Helper function to get person name by ID
-  const getPersonNameById = (personId: string) => {
-   // console.log('Looking for person with ID:', personId, 'in people array:', people);
-    const person = people.find(p => p.id === personId);
-    if (person) {
-      //  console.log('Found person:', person.name);
-      return person ? person.name : personId;
+  // Helper function to get person name - now that spentBy stores names directly
+  const getPersonDisplayName = (spentByValue: string) => {
+   // console.log('🔍 Getting display name for:', spentByValue);
+    
+    // If spentBy is already a name (from database), return it directly
+    if (spentByValue && !spentByValue.includes('-') && !spentByValue.startsWith('guest_') && spentByValue.length < 50) {
+    //  console.log('✅ Using stored name:', spentByValue);
+      return spentByValue;
     }
-   // console.log('Person not found, returning ID as fallback:', personId);
-    return personId; // Fallback to ID if person not found
+    
+    // Handle guest IDs (starts with 'guest_')
+    if (spentByValue && spentByValue.startsWith('guest_')) {
+      // Try to find guest in people array by ID
+      const guestPerson = people.find(p => p.id === spentByValue);
+      if (guestPerson) {
+       // console.log('✅ Found guest person by ID:', guestPerson.name);
+        return guestPerson.name;
+      }
+      // console.log('⚠️ Guest not found in people array, using fallback');
+      return 'Guest User';
+    }
+    
+    // Fallback: try to find person by ID (for backward compatibility)
+    const person = people.find(p => 
+      p.id === spentByValue || 
+      ('user_id' in p && p.user_id === spentByValue)
+    );
+    
+    if (person) {
+     // console.log('✅ Found person by ID lookup:', person.name);
+      return person.name;
+    }
+    
+    // Special case: Check if spentByValue matches currentUser.id
+    if (currentUser && spentByValue === currentUser.id) {
+      // This transaction was made by the current user
+      if (userProfile?.full_name) {
+       // console.log('✅ Using current user full_name:', userProfile.full_name);
+        return userProfile.full_name;
+      }
+      if (userProfile?.email) {
+       // console.log('✅ Using current user email:', userProfile.email);
+        return userProfile.email;
+      }
+    }
+
+    // console.log('⚠️ Could not resolve name, using fallback');
+    return 'Unknown User';
   };
 
   // Check if current user is card member and set default spentBy
@@ -119,14 +157,29 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         return;
       }
 
+      // Find the person to get their name
+      const selectedPerson = people.find(p => p.id === spentBy);
+      if (!selectedPerson) {
+        toast({
+          title: "Error",
+          description: "Selected person not found",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const transaction: Omit<Transaction, 'id'> = {
         amount: parseFloat(amount),
         description,
         date,
         type: 'expense',
         category,
-        spentBy,
-        isCommonSplit: category === 'common'
+        spentBy: selectedPerson.name, // Store person's name, not ID
+        isCommonSplit: category === 'common',
+        month,
+        year,
+        user_id: currentUser?.id,
+        credit_card_id: selectedCard?.id
       };
 
       const id = await addTransaction(transaction);
@@ -181,13 +234,28 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
     setLoading(true);
     try {
+      // Find the person to get their name
+      const selectedPerson = people.find(p => p.id === spentBy);
+      if (!selectedPerson) {
+        toast({
+          title: "Error",
+          description: "Selected person not found",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const transaction: Omit<Transaction, 'id'> = {
         amount: parseFloat(amount),
         description,
         date,
         type: 'payment',
         category: 'personal',
-        spentBy
+        spentBy: selectedPerson.name, // Store person's name, not ID
+        month,
+        year,
+        user_id: currentUser?.id,
+        credit_card_id: selectedCard?.id
       };
 
       // Save to database - real-time sync will handle UI updates
@@ -216,7 +284,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     // Card owners can delete any transaction
     const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
     
-    if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.id) {
+    // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+    if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.name) {
       toast({
         title: "Access Restricted",
         description: "You can only delete your own transactions.",
@@ -294,68 +363,6 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       </span>
     </div>
   );
-
-  // Add this component for individual transaction items
-  const TransactionItem = ({ transaction, onDelete, canDelete, personName, selectedCard, currentUser, month, year }) => {
-    const [isDeleting, setIsDeleting] = useState(false);
-    
-    const handleDelete = async () => {
-      setIsDeleting(true);
-      try {
-        await onDelete(transaction.id);
-      } finally {
-        setIsDeleting(false);
-      }
-    };
-
-    return (
-      <div className={`flex items-center justify-between p-3 border rounded-lg transition-all duration-200 hover:shadow-md ${
-        transaction.type === 'expense' ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'bg-green-50/50 hover:bg-green-100/50'
-      }`}>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{transaction.description}</span>
-            <Badge 
-              variant={transaction.isCommonSplit ? 'default' : 'secondary'}
-              className="text-xs"
-            >
-              {transaction.isCommonSplit ? 'Common' : transaction.category}
-            </Badge>
-            {/* Add time indicator for recent transactions */}
-            {Date.now() - new Date(transaction.created_at || Date.now()).getTime() < 30000 && (
-              <Badge variant="outline" className="text-xs border-green-500 text-green-600">
-                New
-              </Badge>
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {personName} • {transaction.date} {month} {year}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`font-semibold ${
-            transaction.type === 'expense' ? 'text-blue-600' : 'text-green-600'
-          }`}>
-            ₹{transaction.amount.toFixed(2)}
-          </span>
-          {canDelete && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-6">
@@ -587,24 +594,42 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {expenseTransactions.map(transaction => {
-                      const personName = getPersonNameById(transaction.spentBy);
+                      const personName = getPersonDisplayName(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
-                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
                       
                     //  console.log('Rendering expense transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       
                       return (
-                        <TransactionItem 
-                          key={transaction.id} 
-                          transaction={transaction} 
-                          onDelete={handleDeleteTransaction} 
-                          canDelete={canDelete} 
-                          personName={personName} 
-                          selectedCard={selectedCard} 
-                          currentUser={currentUser} 
-                          month={month} 
-                          year={year} 
-                        />
+                        <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{transaction.description}</span>
+                              <Badge 
+                                variant={transaction.isCommonSplit ? 'default' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {transaction.isCommonSplit ? 'Common' : transaction.category}
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {personName} • {transaction.date} {month} {year}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-blue-600">₹{transaction.amount.toFixed(2)}</span>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -617,24 +642,39 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {paymentTransactions.map(transaction => {
-                      const personName = getPersonNameById(transaction.spentBy);
+                      const personName = getPersonDisplayName(transaction.spentBy);
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
-                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.id);
+                      // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
+                      const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
                       
                      // console.log('Rendering payment transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
                       
                       return (
-                        <TransactionItem 
-                          key={transaction.id} 
-                          transaction={transaction} 
-                          onDelete={handleDeleteTransaction} 
-                          canDelete={canDelete} 
-                          personName={personName} 
-                          selectedCard={selectedCard} 
-                          currentUser={currentUser} 
-                          month={month} 
-                          year={year} 
-                        />
+                        <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{transaction.description}</span>
+                              <Badge variant="outline" className="text-xs border-green-600 text-green-600">
+                                Payment
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {personName} • {transaction.date} {month} {year}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-green-600">₹{transaction.amount.toFixed(2)}</span>
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
