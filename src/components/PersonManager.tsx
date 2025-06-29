@@ -87,14 +87,30 @@ const PersonManager: React.FC<PersonManagerProps> = ({
   // Fetch actual card members from card_members table
   const fetchCardMembers = async () => {
     if (!selectedCard?.id) {
-     // console.log('No selected card ID');
       return;
     }
 
     try {
       setLoading(true);
-      
-      // First, get card members
+
+      // Get card info (to get owner)
+      const { data: cardData, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('user_id')
+        .eq('id', selectedCard.id)
+        .single();
+
+      if (cardError) {
+        console.error('Error fetching card owner:', cardError);
+        toast({
+          title: "Error",
+          description: "Failed to load card owner",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Get card members
       const { data: members, error: membersError } = await supabase
         .from('card_members')
         .select('id, user_id, role')
@@ -111,19 +127,13 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         return;
       }
 
-      if (!members || members.length === 0) {
-       // console.log('No card members found');
-        setCardMembers([]);
-        // Still load guests even if no card members
-        const storedGuests = loadGuestsFromStorage();
-        setPeople(storedGuests);
-        return;
-      }
+      // Get all user IDs (owner + members)
+      const userIds = [
+        ...(cardData?.user_id ? [cardData.user_id] : []),
+        ...(members ? members.map(m => m.user_id) : [])
+      ];
 
-      // Get user IDs to fetch profiles
-      const userIds = members.map(m => m.user_id);
-      
-      // Then get profiles for those users
+      // Fetch profiles for all
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, full_name, email')
@@ -133,41 +143,79 @@ const PersonManager: React.FC<PersonManagerProps> = ({
         console.error('Error fetching profiles:', profilesError);
       }
 
-      //console.log('Fetched card members:', members);
-     // console.log('Fetched profiles:', profiles);
-      
-      // Transform the data
-      const transformedMembers: CardMember[] = members.map(member => {
-        const profile = profiles?.find(p => p.id === member.user_id);
-        return {
-          id: member.id,
-          user_id: member.user_id,
-          role: member.role as 'owner' | 'member',
-          profile: {
-            full_name: profile?.full_name || null,
-            email: profile?.email || 'Unknown'
+      // Build people array: owner first, then members (avoid duplicates)
+      const peopleForSplit: Person[] = [];
+
+      // Add owner
+      if (cardData?.user_id) {
+        const ownerProfile = profiles?.find(p => p.id === cardData.user_id);
+        peopleForSplit.push({
+          id: cardData.user_id,
+          name: ownerProfile?.full_name || ownerProfile?.email || 'Card Owner',
+          isCardOwner: true,
+          role: 'owner',
+          email: ownerProfile?.email,
+          user_id: cardData.user_id
+        });
+      }
+
+      // Add members (skip owner if present)
+      if (members && profiles) {
+        members.forEach(member => {
+          if (member.user_id !== cardData?.user_id) {
+            const profile = profiles.find(p => p.id === member.user_id);
+            peopleForSplit.push({
+              id: member.user_id,
+              name: profile?.full_name || profile?.email || 'Unknown User',
+              isCardOwner: false,
+              role: (member.role === 'owner' || member.role === 'member') ? member.role : 'member', // <-- fix here
+              email: profile?.email,
+              user_id: member.user_id
+            });
           }
-        };
-      });
-
-      setCardMembers(transformedMembers);
-
-      // Convert to Person format for the split calculation
-      const peopleForSplit: Person[] = transformedMembers.map(member => ({
-        id: member.user_id, // Use user_id as the main ID for consistency
-        name: member.profile.full_name || member.profile.email || 'Unknown User',
-        isCardOwner: member.role === 'owner',
-        role: member.role,
-        email: member.profile.email,
-        user_id: member.user_id // Keep user_id for reference
-      }));
+        });
+      }
 
       // Load guests from localStorage and merge
       const storedGuests = loadGuestsFromStorage();
-      // console.log('🔍 DEBUG - Merging card members with stored guests:', { peopleForSplit, storedGuests });
-      
       setPeople([...peopleForSplit, ...storedGuests]);
 
+      // Build cardMembers array: owner first, then members (avoid duplicates)
+      const cardMembersList: CardMember[] = [];
+
+      // Add owner
+      if (cardData?.user_id) {
+        const ownerProfile = profiles?.find(p => p.id === cardData.user_id);
+        cardMembersList.push({
+          id: cardData.user_id,
+          user_id: cardData.user_id,
+          role: 'owner',
+          profile: {
+            full_name: ownerProfile?.full_name || null,
+            email: ownerProfile?.email || 'Unknown'
+          }
+        });
+      }
+
+      // Add members (skip owner if present)
+      if (members && profiles) {
+        members.forEach(member => {
+          if (member.user_id !== cardData?.user_id) {
+            const profile = profiles.find(p => p.id === member.user_id);
+            cardMembersList.push({
+              id: member.id,
+              user_id: member.user_id,
+              role: (member.role === 'owner' || member.role === 'member') ? member.role : 'member',
+              profile: {
+                full_name: profile?.full_name || null,
+                email: profile?.email || 'Unknown'
+              }
+            });
+          }
+        });
+      }
+
+      setCardMembers(cardMembersList);
     } catch (error) {
       console.error('Error in fetchCardMembers:', error);
       toast({
@@ -377,7 +425,7 @@ const PersonManager: React.FC<PersonManagerProps> = ({
           <Alert className="border-amber-200 bg-amber-50">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-800">
-              <strong>Guest data is temporarily stored locally.</strong> Guests will be lost if you clear browser data. 
+              <strong>Guest data is temporarily stored locally and cannot be seen in other devices or by other members.</strong> Guests will be lost if you clear browser data. 
               Consider inviting them as card members for permanent access.
             </AlertDescription>
           </Alert>

@@ -16,6 +16,7 @@ export interface Transaction {
   category: 'personal' | 'common';
   spentBy: string; // This should store person NAME, not ID (matches spent_by_person_name)
   splitBetween?: string[];
+  includedPeople?: string[]; // Array of person IDs included in the split
   isCommonSplit?: boolean; // This maps to is_common_split
   month?: string; // Add these to match DB schema
   year?: string;

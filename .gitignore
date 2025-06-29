@@ -26,3 +26,6 @@ dist-ssr
 .env.local
 .env.development.local
 .env.test.local
+
+.github/*
+.github/instructions

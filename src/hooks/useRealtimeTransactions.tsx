@@ -56,8 +56,21 @@ export const useRealtimeTransactions = ({
       }
 
       // Convert database transactions to local format
+      type DbTransaction = {
+        id: string;
+        amount: number;
+        description: string;
+        transaction_date: string;
+        transaction_type: string;
+        category: string;
+        spent_by_person_name: string;
+        is_common_split: boolean;
+        included_people?: string[];
+        // other fields...
+      };
+
       const localTransactions: Transaction[] = (dbTransactions || []).map(
-        (dbTransaction) => ({
+        (dbTransaction: DbTransaction) => ({
           id: dbTransaction.id,
           amount: parseFloat(dbTransaction.amount.toString()),
           description: dbTransaction.description,
@@ -66,6 +79,7 @@ export const useRealtimeTransactions = ({
           category: dbTransaction.category as "personal" | "common",
           spentBy: dbTransaction.spent_by_person_name,
           isCommonSplit: dbTransaction.is_common_split || false,
+          includedPeople: dbTransaction.included_people ?? undefined,
         })
       );
 
@@ -133,7 +147,7 @@ export const useRealtimeTransactions = ({
   }, [cardId, selectedMonth, selectedYear, userId]); // Removed loadTransactions from dependencies
 
   // NO useCallback to avoid circular dependencies
-  const addTransaction = async (transaction: Omit<Transaction, "id">) => {
+  const addTransaction = async (transaction: Omit<Transaction, "id"> & { includedPeople?: string[] }) => {
     try {
     //  console.log("Adding transaction:", transaction);
 
@@ -160,7 +174,7 @@ export const useRealtimeTransactions = ({
         "0"
       )}-${String(transaction.date).padStart(2, "0")}`;
 
-      const dbTransaction = {
+      const dbTransaction: any = {
         user_id: userId,
         credit_card_id: cardId,
         amount: Number(transaction.amount),
@@ -173,6 +187,11 @@ export const useRealtimeTransactions = ({
         year: String(selectedYear),
         is_common_split: Boolean(transaction.isCommonSplit),
       };
+
+      // Add included_people only for common split
+      if (transaction.isCommonSplit && Array.isArray(transaction.includedPeople)) {
+        dbTransaction.included_people = transaction.includedPeople;
+      }
 
       const { data, error } = await supabase
         .from("transactions")

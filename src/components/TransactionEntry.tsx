@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
+import { Checkbox } from '@/components/ui/checkbox'; // Add this import if Checkbox exists
 
 interface TransactionEntryProps {
   people: Person[];
@@ -45,6 +46,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [currentUserPerson, setCurrentUserPerson] = useState<Person | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [commonSplitPeople, setCommonSplitPeople] = useState<string[]>(people.map(p => p.id));
 
   // Helper function to get person name - now that spentBy stores names directly
   const getPersonDisplayName = (spentByValue: string) => {
@@ -125,6 +127,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     setDate(currentDay);
   }, []);
 
+  // Update commonSplitPeople when people list changes
+  useEffect(() => {
+    setCommonSplitPeople(people.map(p => p.id));
+  }, [people]);
+
   const resetForm = () => {
     setAmount('');
     setDescription('');
@@ -146,9 +153,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     try {
       setLoading(true);
       setConnectionStatus('reconnecting');
-      
+
       // Validation
-      if (!amount || !description || !date || !spentBy) {
+      if (!amount || !description || !date || (category !== 'common' && !spentBy)) {
         toast({
           title: "Missing Information",
           description: "Please fill in all fields",
@@ -156,49 +163,59 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         });
         return;
       }
-
-      // Find the person to get their name
-      const selectedPerson = people.find(p => p.id === spentBy);
-      if (!selectedPerson) {
+      if (category === 'common' && commonSplitPeople.length < 2) {
         toast({
-          title: "Error",
-          description: "Selected person not found",
+          title: "Select People",
+          description: "Select at least 2 people for a common split.",
           variant: "destructive"
         });
         return;
       }
 
-      const transaction: Omit<Transaction, 'id'> = {
+      let spentByValue = spentBy;
+      if (category === 'common') {
+        spentByValue = 'common';
+      }
+
+      let selectedPerson = null;
+      if (category !== 'common') {
+        selectedPerson = people.find(p => p.id === spentBy);
+        if (!selectedPerson) {
+          toast({
+            title: "Error",
+            description: "Selected person not found",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+
+      const transaction: Omit<Transaction, 'id'> & { includedPeople?: string[] } = {
         amount: parseFloat(amount),
         description,
         date,
         type: 'expense',
         category,
-        spentBy: selectedPerson.name, // Store person's name, not ID
+        spentBy: category === 'common' ? 'common' : selectedPerson!.name,
         isCommonSplit: category === 'common',
         month,
         year,
         user_id: currentUser?.id,
-        credit_card_id: selectedCard?.id
+        credit_card_id: selectedCard?.id,
+        ...(category === 'common' ? { includedPeople: commonSplitPeople } : {})
       };
 
       const id = await addTransaction(transaction);
-      
-      // Enhanced success feedback
+
       setConnectionStatus('connected');
       setLastSyncTime(new Date());
-      
-      // Smart form reset
       resetForm();
-      
-      // Success animation
       toast({
         title: "✅ Expense Added",
         description: `₹${amount} for ${description} has been saved`,
         className: "border-green-500 bg-green-50",
       });
 
-      // Auto-focus on amount field for quick entry
       setTimeout(() => {
         const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
         amountInput?.focus();
@@ -485,6 +502,50 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                   </Select>
                 </div>
               </div>
+
+              {category === 'common' && (
+                <div className="mb-4 p-3 border rounded-lg bg-blue-50/30">
+                  <label className="block text-sm font-semibold mb-2 text-blue-900">
+                    Include in Split
+                  </label>
+                  <div className="flex flex-wrap gap-4">
+                    {people.map(person => (
+                      <label key={person.id} className="flex items-center gap-2 text-sm font-medium">
+                        {typeof Checkbox !== "undefined" ? (
+                          <Checkbox
+                            checked={commonSplitPeople.includes(person.id)}
+                            onCheckedChange={checked => {
+                              if (checked) {
+                                setCommonSplitPeople(prev => [...prev, person.id]);
+                              } else {
+                                setCommonSplitPeople(prev => prev.filter(id => id !== person.id));
+                              }
+                            }}
+                          />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={commonSplitPeople.includes(person.id)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setCommonSplitPeople(prev => [...prev, person.id]);
+                              } else {
+                                setCommonSplitPeople(prev => prev.filter(id => id !== person.id));
+                              }
+                            }}
+                          />
+                        )}
+                        <span>
+                          {person.name} {person.isCardOwner && <span className="text-xs text-amber-600">(Card Owner)</span>}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {commonSplitPeople.length < 2 && (
+                    <div className="text-xs text-red-600 mt-2">Select at least 2 people for a common split.</div>
+                  )}
+                </div>
+              )}
 
               <Button onClick={handleAddExpense} className="w-full" disabled={loading}>
                 <Plus className="w-4 h-4 mr-2" />

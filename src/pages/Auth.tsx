@@ -310,7 +310,7 @@ const Auth = () => {
             .eq('id', data.user.id)
             .maybeSingle();
             
-          console.log('Profile after login:', profileData);
+          //console.log('Profile after login:', profileData);
             
           if (!profileError && (!profileData || !profileData.full_name) && 
               (data.user.user_metadata?.full_name || data.user.user_metadata?.name)) {

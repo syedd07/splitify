@@ -1,4 +1,4 @@
-import { CreditCard, Github, Heart } from "lucide-react";
+import { CreditCard, Facebook, Github, Heart, Instagram, Linkedin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
@@ -24,7 +24,7 @@ const Footer = ({ className }: FooterProps) => {
                 Splitify!
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground font-medium">
-                Credit Ease Divide
+                Credit ◦ Ease ◦ Divide
               </p>
             </div>
             </div>
@@ -48,6 +48,9 @@ const Footer = ({ className }: FooterProps) => {
           <div className="flex flex-col space-y-3">
             <h3 className="text-lg font-medium">Legal</h3>
             <div className="flex flex-col space-y-2">
+              <a href="mailto:syedyusufali6626@gmail.com" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Support
+              </a>
               <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Privacy Policy
               </a>
@@ -62,11 +65,39 @@ const Footer = ({ className }: FooterProps) => {
         
         <div className="flex flex-col md:flex-row justify-between items-center">
           <p className="text-sm text-muted-foreground">
-            &copy; {currentYear} Credit Ease Divide. All rights reserved.
+            &copy; {currentYear} Splitify Credit ◦ Ease ◦ Divide. All rights reserved.
           </p>
           <div className="flex items-center space-x-4 mt-4 md:mt-0">
             <a 
-              href="https://github.com" 
+              href="https://www.instagram.com/in/syedd07/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Linkedin className="h-5 w-5" />
+              <span className="sr-only">LinkedIn</span>
+
+            </a>
+            <a 
+              href="https://www.instagram.com/syedd07/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Instagram className="h-5 w-5" />
+              <span className="sr-only">Instagram</span>
+              </a>
+            <a
+              href="https://www.facebook.com/syedd07"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Facebook className="h-5 w-5" />
+              <span className="sr-only">Facebook</span>
+            </a>
+            <a 
+              href="https://github.com/syedd07" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -75,7 +106,8 @@ const Footer = ({ className }: FooterProps) => {
               <span className="sr-only">GitHub</span>
             </a>
             <span className="text-sm text-muted-foreground">
-              Made with <Heart className="h-3 w-3 inline text-destructive" /> by Ali
+              Made with <Heart className="h-3 w-3 inline text-destructive" /> by
+              <a href="https://sydali.netlify.app"> Ali</a>
             </span>
           </div>
         </div>

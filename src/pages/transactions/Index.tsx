@@ -135,51 +135,51 @@ const Index = () => {
 
   // Add this to your Index.tsx initialization useEffect
   useEffect(() => {
-  const initializeData = async () => {
-    // Only show loading state if we're actually going to fetch data
-    if (user && !authLoading) {
-      setCardsLoading(true);
-      try {
-        // Load selected card from localStorage
-        const storedCard = localStorage.getItem('selectedCard');
-        if (storedCard) {
-          try {
-            const cardData = JSON.parse(storedCard);
-            setSelectedCard(cardData);
-            
-            // If we're in transactions step but people array is empty, fetch people
-            if (currentStep === 'transactions' && people.length === 0 && cardData.id) {
-              await fetchPeopleForCard(cardData.id);
+    const initializeData = async () => {
+      // Only show loading state if we're actually going to fetch data
+      if (user && !authLoading) {
+        setCardsLoading(true);
+        try {
+          // Load selected card from localStorage
+          const storedCard = localStorage.getItem('selectedCard');
+          if (storedCard) {
+            try {
+              const cardData = JSON.parse(storedCard);
+              setSelectedCard(cardData);
+
+              // If we're in transactions step but people array is empty, fetch people
+              if (currentStep === 'transactions' && people.length === 0 && cardData.id) {
+                await fetchPeopleForCard(cardData.id);
+              }
+            } catch (e) {
+              console.error('Error parsing stored card:', e);
+              localStorage.removeItem('selectedCard');
+              // Redirect to onboarding if card data is invalid
+              navigate('/onboarding');
             }
-          } catch (e) {
-            console.error('Error parsing stored card:', e);
-            localStorage.removeItem('selectedCard');
-            // Redirect to onboarding if card data is invalid
-            navigate('/onboarding');
+          } else {
+            // No card selected but user is logged in - fetch their cards
+            await fetchUserCards(user.id);
           }
-        } else {
-          // No card selected but user is logged in - fetch their cards
-          await fetchUserCards(user.id);
-        }
-        
-        // Load people from localStorage
-        const savedPeople = localStorage.getItem('splitPeople');
-        if (savedPeople && people.length === 0) {
-          try {
-            setPeople(JSON.parse(savedPeople));
-          } catch (e) {
-            console.error('Error parsing saved people:', e);
-            localStorage.removeItem('splitPeople');
+
+          // Load people from localStorage
+          const savedPeople = localStorage.getItem('splitPeople');
+          if (savedPeople && people.length === 0) {
+            try {
+              setPeople(JSON.parse(savedPeople));
+            } catch (e) {
+              console.error('Error parsing saved people:', e);
+              localStorage.removeItem('splitPeople');
+            }
           }
+        } finally {
+          setCardsLoading(false);
         }
-      } finally {
-        setCardsLoading(false);
       }
-    }
-  };
-  
-  initializeData();
-}, [user, authLoading]);
+    };
+
+    initializeData();
+  }, [user, authLoading]);
 
   // Update the fetchUserCards function to handle the 406 error:
   const fetchUserCards = async (userId: string) => {
@@ -191,11 +191,11 @@ const Index = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      
+
       // Transform cards to include role information
       const cardsWithRoles = await Promise.all((data || []).map(async (card) => {
         const isOwner = card.user_id === userId;
-        
+
         let role = 'guest';
         if (isOwner) {
           role = 'owner';
@@ -219,7 +219,7 @@ const Index = () => {
             console.warn('Failed to check card membership:', memberCheckError);
             // Continue to shared_emails check
           }
-          
+
           // If no membership found, check shared_emails
           if (role === 'guest') {
             try {
@@ -228,9 +228,9 @@ const Index = () => {
                 .select('email')
                 .eq('id', userId)
                 .single();
-              
+
               if (userProfile && card.shared_emails && Array.isArray(card.shared_emails)) {
-                const isInSharedEmails = card.shared_emails.some(email => 
+                const isInSharedEmails = card.shared_emails.some(email =>
                   String(email).toLowerCase() === String(userProfile.email).toLowerCase()
                 );
                 if (isInSharedEmails) {
@@ -242,13 +242,13 @@ const Index = () => {
             }
           }
         }
-        
+
         return {
           ...card,
           role
         };
       }));
-      
+
       // Only return cards where user has access (not guest)
       const accessibleCards = cardsWithRoles.filter(card => card.role !== 'guest');
       setAvailableCards(accessibleCards);
@@ -285,7 +285,7 @@ const Index = () => {
           .select('id, full_name, email')
           .eq('id', cardData.user_id)
           .single();
-          
+
         if (!profileError && profileData) {
           // Add card owner
           newPeople.push({
@@ -308,7 +308,7 @@ const Index = () => {
       // Get profiles for all member user_ids
       if (members && members.length > 0) {
         const memberUserIds = members.map(m => m.user_id);
-        
+
         const { data: memberProfiles, error: profilesError } = await supabase
           .from('profiles')
           .select('id, full_name, email')
@@ -414,6 +414,10 @@ const Index = () => {
     setCurrentStep('transactions');
   };
 
+  const handleRefresh = () => {
+    window.location.reload();
+  };
+
   // Mobile Menu Component
   const MobileMenu = () => (
     <Sheet>
@@ -455,6 +459,14 @@ const Index = () => {
               Sign In
             </Button>
           )}
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            className="justify-start"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4v5h.582M20 20v-5h-.581M5.07 19A9 9 0 1 1 12 21a9 9 0 0 1-6.93-2.93"></path></svg>
+            Refresh
+          </Button>
         </div>
       </SheetContent>
     </Sheet>
@@ -501,20 +513,18 @@ const Index = () => {
     <div className="flex items-center justify-center mb-6 sm:mb-8 px-2">
       <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto pb-2">
         {/* Step 1: Setup */}
-        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
-          currentStep === 'setup' 
-            ? 'text-blue-600 scale-105' 
-            : stepCompletion.setup 
-            ? 'text-green-600' 
-            : 'text-gray-400'
-        }`}>
-          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-            currentStep === 'setup' 
-              ? 'bg-blue-600 text-white shadow-lg' 
-              : stepCompletion.setup 
-              ? 'bg-green-600 text-white' 
-              : 'bg-gray-200'
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${currentStep === 'setup'
+            ? 'text-blue-600 scale-105'
+            : stepCompletion.setup
+              ? 'text-green-600'
+              : 'text-gray-400'
           }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${currentStep === 'setup'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : stepCompletion.setup
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-200'
+            }`}>
             {stepCompletion.setup ? (
               <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
             ) : (
@@ -522,31 +532,28 @@ const Index = () => {
             )}
           </div>
           <span className="font-medium text-xs sm:text-sm">Setup</span>
-          {stepCompletion.setup && (
+           {/* {stepCompletion.setup && (
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          )}
+          )} */}
         </div>
 
         {/* Progress Line 1 */}
-        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${
-          stepCompletion.setup ? 'bg-green-600' : 'bg-gray-200'
-        }`}></div>
+        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${stepCompletion.setup ? 'bg-green-600' : 'bg-gray-200'
+          }`}></div>
 
         {/* Step 2: Transactions */}
-        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
-          currentStep === 'transactions' 
-            ? 'text-blue-600 scale-105' 
-            : stepCompletion.transactions 
-            ? 'text-green-600' 
-            : 'text-gray-400'
-        }`}>
-          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-            currentStep === 'transactions' 
-              ? 'bg-blue-600 text-white shadow-lg' 
-              : stepCompletion.transactions 
-              ? 'bg-green-600 text-white' 
-              : 'bg-gray-200'
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${currentStep === 'transactions'
+            ? 'text-blue-600 scale-105'
+            : stepCompletion.transactions
+              ? 'text-green-600'
+              : 'text-gray-400'
           }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${currentStep === 'transactions'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : stepCompletion.transactions
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-200'
+            }`}>
             {stepCompletion.transactions ? (
               <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
             ) : (
@@ -556,26 +563,21 @@ const Index = () => {
           <span className="font-medium text-xs sm:text-sm hidden sm:inline">Add Expenses & Payments</span>
           <span className="font-medium text-xs sm:text-sm sm:hidden">Expenses</span>
           {currentStep === 'transactions' && (
-            <Badge variant="secondary" className="text-xs">
-              {transactions.length} items
-            </Badge>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
           )}
         </div>
 
         {/* Progress Line 2 */}
-        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${
-          stepCompletion.transactions ? 'bg-green-600' : 'bg-gray-200'
-        }`}></div>
+        <div className={`w-4 sm:w-8 h-1 flex-shrink-0 transition-all duration-500 ${stepCompletion.transactions ? 'bg-green-600' : 'bg-gray-200'
+          }`}></div>
 
         {/* Step 3: Calculate */}
-        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${
-          currentStep === 'summary' ? 'text-blue-600 scale-105' : 'text-gray-400'
-        }`}>
-          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
-            currentStep === 'summary' 
-              ? 'bg-blue-600 text-white shadow-lg' 
-              : 'bg-gray-200'
+        <div className={`flex items-center space-x-1 sm:space-x-2 flex-shrink-0 transition-all duration-300 ${currentStep === 'summary' ? 'text-blue-600 scale-105' : 'text-gray-400'
           }`}>
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all duration-300 ${currentStep === 'summary'
+              ? 'bg-blue-600 text-white shadow-lg'
+              : 'bg-gray-200'
+            }`}>
             <Calculator className="w-3 h-3 sm:w-4 sm:h-4" />
           </div>
           <span className="font-medium text-xs sm:text-sm">Calculate</span>
@@ -620,7 +622,7 @@ const Index = () => {
                 <span className="font-medium">Setup complete!</span>
                 <span className="text-sm text-muted-foreground">Ready to add transactions</span>
               </div>
-              <Button 
+              <Button
                 onClick={() => setCurrentStep('transactions')}
                 size="sm"
                 className="ml-4"
@@ -631,7 +633,7 @@ const Index = () => {
           </CardContent>
         </Card>
       )}
-      
+
       {currentStep === 'transactions' && transactions.length > 0 && (
         <Card className="bg-green-50 border-green-200">
           <CardContent className="p-4">
@@ -641,7 +643,7 @@ const Index = () => {
                 <span className="font-medium">{transactions.length} transactions added</span>
                 <span className="text-sm text-muted-foreground">Ready to calculate splits</span>
               </div>
-              <Button 
+              <Button
                 onClick={() => setCurrentStep('summary')}
                 size="sm"
                 className="ml-4"
@@ -659,7 +661,7 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
       <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
         {/* Responsive Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 sm:mb-8">
           <div className="flex items-center gap-2 sm:gap-3">
             <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
             <div>
@@ -671,7 +673,6 @@ const Index = () => {
               </p>
             </div>
           </div>
-
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-3">
             {user ? (
@@ -696,8 +697,7 @@ const Index = () => {
               </Button>
             )}
           </div>
-
-          {/* Mobile Menu - Now positioned on the right with auto margin */}
+          {/* Mobile Menu */}
           <div className="md:hidden ml-auto">
             <MobileMenu />
           </div>

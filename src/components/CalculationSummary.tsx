@@ -1,10 +1,17 @@
-import React from 'react';
-import { Download, Calculator, Users, Receipt, CreditCard, Banknote } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { Transaction, Person, PersonBalance } from '@/types/BillSplitter';
+import React from "react";
+import {
+  Download,
+  Calculator,
+  Users,
+  Receipt,
+  CreditCard,
+  Banknote,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { Transaction, Person, PersonBalance } from "@/types/BillSplitter";
 
 interface CalculationSummaryProps {
   people: Person[];
@@ -17,24 +24,41 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   people,
   transactions,
   month,
-  year
+  year,
 }) => {
   const { toast } = useToast();
 
   const calculateBalances = (): PersonBalance[] => {
-    return people.map(person => {
+    return people.map((person) => {
+      const matchesPerson = (t: Transaction) =>
+        t.spentBy === person.id || t.spentBy === person.name;
+
+      // Personal expenses (not common)
       const personalExpenses = transactions
-        .filter(t => t.type === 'expense' && t.spentBy === person.id && !t.isCommonSplit)
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const commonExpenses = transactions
-        .filter(t => t.type === 'expense' && t.isCommonSplit && t.spentBy === person.id)
+        .filter(
+          (t) => t.type === "expense" && matchesPerson(t) && !t.isCommonSplit
+        )
         .reduce((sum, t) => sum + t.amount, 0);
 
+      // Common expenses: split among only included people
+      const commonExpenses = transactions
+        .filter((t) => t.type === "expense" && t.isCommonSplit)
+        .reduce((sum, t) => {
+          // Use includedPeople if present, otherwise fallback to all people
+          const included =
+            Array.isArray(t.includedPeople) && t.includedPeople.length > 0
+              ? t.includedPeople
+              : people.map((p) => p.id);
+          if (included.includes(person.id)) {
+            return sum + t.amount / included.length;
+          }
+          return sum;
+        }, 0);
+
       const totalPayments = transactions
-        .filter(t => t.type === 'payment' && t.spentBy === person.id)
+        .filter((t) => t.type === "payment" && matchesPerson(t))
         .reduce((sum, t) => sum + t.amount, 0);
-      
+
       const totalExpenses = personalExpenses + commonExpenses;
       const netBalance = totalExpenses - totalPayments;
 
@@ -44,7 +68,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
         commonExpenses,
         totalExpenses,
         totalPayments,
-        netBalance
+        netBalance,
       };
     });
   };
@@ -52,7 +76,10 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
   const balances = calculateBalances();
   const totalExpenses = balances.reduce((sum, b) => sum + b.totalExpenses, 0);
   const totalPayments = balances.reduce((sum, b) => sum + b.totalPayments, 0);
-  const totalCommonExpenses = balances.reduce((sum, b) => sum + b.commonExpenses, 0);
+  const totalCommonExpenses = balances.reduce(
+    (sum, b) => sum + b.commonExpenses,
+    0
+  );
   const outstandingBalance = totalExpenses - totalPayments;
 
   // Sort transactions by date in descending order (latest first)
@@ -64,19 +91,64 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
     });
   };
 
-  const expenseTransactions = sortTransactionsByDate(transactions.filter(t => t.type === 'expense'));
-  const paymentTransactions = sortTransactionsByDate(transactions.filter(t => t.type === 'payment'));
+  const expenseTransactions = sortTransactionsByDate(
+    transactions.filter((t) => t.type === "expense")
+  );
+  const paymentTransactions = sortTransactionsByDate(
+    transactions.filter((t) => t.type === "payment")
+  );
 
   const generatePDF = () => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast({
         title: "PDF Generation Failed",
         description: "Please allow popups to generate PDF reports.",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
+
+    const formatDate = (dateStr: string) => {
+      // Assumes dateStr is DD or DDMM or DDMMYYYY, adapt as needed
+      // If only DD, just return with month/year
+      if (dateStr.length <= 2) {
+        return `${dateStr} ${month.slice(0, 3)} '${year.slice(-2)}`;
+      }
+      // If DDMM or DDMMYY
+      if (dateStr.length === 4) {
+        const day = dateStr.slice(0, 2);
+        const mm = dateStr.slice(2, 4);
+        const months = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        const monthName = months[parseInt(mm, 10) - 1] || month.slice(0, 3);
+        return `${day} ${monthName} '${year.slice(-2)}`;
+      }
+      // fallback
+      return `${dateStr} ${month.slice(0, 3)} '${year.slice(-2)}`;
+    };
+
+    // ...inside generatePDF, before htmlContent...
+    const getCurrentFormattedDate = () => {
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, "0");
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const month = months[now.getMonth()];
+      const year = String(now.getFullYear()).slice(-2);
+      return `${day} ${month} '${year}`;
+    };
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -92,7 +164,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
             .section { margin: 30px 0; }
             table { width: 100%; border-collapse: collapse; margin: 10px 0; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f8f9fa; font-weight: bold; }
+            th { background-color: #e0e7ff; }
             .total-row { font-weight: bold; background-color: #f1f5f9; }
             .expense { background-color: #dbeafe; }
             .payment { background-color: #dcfce7; }
@@ -115,9 +187,10 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
         </head>
         <body>
           <div class="header">
+            <img src="https://raw.githubusercontent.com/syedd07/splitify/refs/heads/main/public/pwa-192x192.png" alt="Splitify" style="height:100px;width:100px;border-radius:8px;margin-bottom:8px; bgcolor: white;">
             <h1>Credit Card Bill Split Summary</h1>
             <h2>${month} ${year}</h2>
-            <p>Generated on ${new Date().toLocaleDateString()}</p>
+            <p>Generated on ${getCurrentFormattedDate()}</p>
           </div>
           
           <div class="summary">
@@ -152,14 +225,29 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                 </tr>
               </thead>
               <tbody>
-                ${balances.map(balance => {
-                  const person = people.find(p => p.id === balance.personId);
-                  const balanceClass = balance.netBalance > 0 ? 'balance-positive' : 'balance-negative';
-                  const balanceText = balance.netBalance > 0 ? `Owes ₹${balance.netBalance.toFixed(2)}` : 
-                                   balance.netBalance < 0 ? `Should receive ₹${Math.abs(balance.netBalance).toFixed(2)}` : 'Settled';
-                  return `
+                ${balances
+        .map((balance) => {
+          const person = people.find(
+            (p) => p.id === balance.personId
+          );
+          const balanceClass =
+            balance.netBalance > 0
+              ? "balance-positive"
+              : "balance-negative";
+          const balanceText =
+            balance.netBalance > 0
+              ? `Owes ₹${balance.netBalance.toFixed(2)}`
+              : balance.netBalance < 0
+                ? `Should receive ₹${Math.abs(
+                  balance.netBalance
+                ).toFixed(2)}`
+                : "Settled";
+          return `
                     <tr>
-                      <td>${person?.name || ''}${person?.isCardOwner ? ' <span class="card-owner">(Card Owner)</span>' : ''}</td>
+                      <td>${person?.name || ""}${person?.isCardOwner
+              ? ' <span class="card-owner">(Card Owner)</span>'
+              : ""
+            }</td>
                       <td>₹${balance.personalExpenses.toFixed(2)}</td>
                       <td>₹${balance.commonExpenses.toFixed(2)}</td>
                       <td>₹${balance.totalExpenses.toFixed(2)}</td>
@@ -167,93 +255,208 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                       <td class="${balanceClass}"><strong>${balanceText}</strong></td>
                     </tr>
                   `;
-                }).join('')}
+        })
+        .join("")}
               </tbody>
             </table>
           </div>
 
           <div class="section">
             <h3>💳 Expense Transactions</h3>
-            ${people.map(person => {
-              const personExpenses = sortTransactionsByDate(expenseTransactions.filter(t => t.spentBy === person.id));
-              if (personExpenses.length === 0) return '';
-              
-              return `
-                <div class="person-section">
-                  <div class="person-header">
-                    ${person.name}${person.isCardOwner ? ' (Card Owner)' : ''} - Expenses
-                  </div>
+            ${people.every(
+          (person) =>
+            sortTransactionsByDate(
+              expenseTransactions.filter(
+                (t) => t.spentBy === person.id || t.spentBy === person.name
+              )
+            ).length === 0
+        )
+        ? `<div style="color:#888;padding:12px;">No expense transactions found for any user.</div>`
+        : people
+          .map((person) => {
+            const personExpenses = sortTransactionsByDate(
+              expenseTransactions.filter(
+                (t) => t.spentBy === person.id || t.spentBy === person.name
+              )
+            );
+            if (personExpenses.length === 0) {
+              return `<div class="person-section"><div class="person-header">${person.name} - No expenses recorded.</div></div>`;
+            }
+            return `
+                        <div class="person-section">
+                          <div class="person-header" style="display:flex;align-items:center;gap:8px;">
+                            ${person.name}${person.isCardOwner ? ' <span class="card-owner">(Card Owner)</span>' : ""
+              } - Expenses
+                          </div>
+                          <table>
+                            <thead>
+                              <tr style="background:#e0e7ff;">
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Category</th>
+                                <th>Included People</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${personExpenses
+                .map(
+                  (transaction) => `
+                                <tr class="expense">
+                                  <td>${formatDate(transaction.date)}</td>
+                                  <td>${transaction.description}${transaction.isCommonSplit ? " (Common Split)" : ""
+                    }</td>
+                                  <td>₹${transaction.amount.toFixed(2)}</td>
+                                  <td>${transaction.isCommonSplit
+                      ? "Common"
+                      : transaction.category
+                    }</td>
+                                  <td>
+                                    ${transaction.isCommonSplit &&
+                      Array.isArray(transaction.includedPeople)
+                      ? transaction.includedPeople
+                        .map((pid) => {
+                          const p = people.find(
+                            (pp) => pp.id === pid
+                          );
+                          return p ? p.name : pid;
+                        })
+                        .join(", ")
+                      : "-"
+                    }
+                                  </td>
+                                </tr>
+                              `
+                )
+                .join("")}
+                              <tr class="total-row">
+                                <td colspan="2"><strong>Subtotal</strong></td>
+                                <td><strong>₹${personExpenses
+                .reduce((sum, t) => sum + t.amount, 0)
+                .toFixed(2)}</strong></td>
+                                <td colspan="2"></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      `;
+          })
+          .join("")
+      }
+          </div>
+
+          <div class="section">
+            <h3>🤝 Common Expenses</h3>
+            ${expenseTransactions.filter((t) => t.isCommonSplit).length === 0
+        ? `<div style="color:#888;padding:12px;">No common expenses recorded for this period.</div>`
+        : `
                   <table>
                     <thead>
-                      <tr>
+                      <tr style="background:#f3e8ff;">
                         <th>Date</th>
                         <th>Description</th>
                         <th>Amount</th>
-                        <th>Category</th>
+                        <th>Paid By</th>
+                        <th>Included People</th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${personExpenses.map(transaction => `
-                        <tr class="expense">
-                          <td>${transaction.date} ${month} ${year}</td>
-                          <td>${transaction.description}${transaction.isCommonSplit ? ' (Common Split)' : ''}</td>
-                          <td>₹${transaction.amount.toFixed(2)}</td>
-                          <td>${transaction.isCommonSplit ? 'Common' : transaction.category}</td>
-                        </tr>
-                      `).join('')}
-                      <tr class="total-row">
-                        <td colspan="2"><strong>Subtotal</strong></td>
-                        <td><strong>₹${personExpenses.reduce((sum, t) => sum + t.amount, 0).toFixed(2)}</strong></td>
-                        <td></td>
-                      </tr>
+                      ${sortTransactionsByDate(
+          expenseTransactions.filter((t) => t.isCommonSplit)
+        )
+          .map((transaction) => {
+            const payer = people.find(
+              (p) =>
+                p.id === transaction.spentBy ||
+                p.name === transaction.spentBy
+            );
+            return `
+                            <tr class="expense">
+                              <td>${formatDate(transaction.date)}</td>
+                              <td>${transaction.description}</td>
+                              <td>₹${transaction.amount.toFixed(2)}</td>
+                              <td>${payer ? payer.name : transaction.spentBy}</td>
+                              <td>
+                                ${Array.isArray(transaction.includedPeople)
+                ? transaction.includedPeople
+                  .map((pid) => {
+                    const p = people.find((pp) => pp.id === pid);
+                    return p ? p.name : pid;
+                  })
+                  .join(", ")
+                : "-"
+              }
+                              </td>
+                            </tr>
+                          `;
+          })
+          .join("")}
                     </tbody>
                   </table>
-                </div>
-              `;
-            }).join('')}
+                `
+      }
           </div>
 
           <div class="section">
             <h3>💰 Payment Transactions</h3>
-            ${people.map(person => {
-              const personPayments = sortTransactionsByDate(paymentTransactions.filter(t => t.spentBy === person.id));
-              if (personPayments.length === 0) return '';
-              
-              return `
-                <div class="person-section">
-                  <div class="person-header">
-                    ${person.name}${person.isCardOwner ? ' (Card Owner)' : ''} - Payments
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Description</th>
-                        <th>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${personPayments.map(transaction => `
-                        <tr class="payment">
-                          <td>${transaction.date} ${month} ${year}</td>
-                          <td>${transaction.description}</td>
-                          <td>₹${transaction.amount.toFixed(2)}</td>
-                        </tr>
-                      `).join('')}
-                      <tr class="total-row">
-                        <td><strong>Total Payments</strong></td>
-                        <td></td>
-                        <td><strong>₹${personPayments.reduce((sum, t) => sum + t.amount, 0).toFixed(2)}</strong></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              `;
-            }).join('')}
+            ${people.every(
+        (person) =>
+          sortTransactionsByDate(
+            paymentTransactions.filter((t) => t.spentBy === person.id)
+          ).length === 0
+      )
+        ? `<div style="color:#888;padding:12px;">No payment transactions found for any user.</div>`
+        : people
+          .map((person) => {
+            const personPayments = sortTransactionsByDate(
+              paymentTransactions.filter((t) => t.spentBy === person.id)
+            );
+            if (personPayments.length === 0) {
+              return `<div class="person-section"><div class="person-header">${person.name} - No payments recorded.</div></div>`;
+            }
+            return `
+                        <div class="person-section">
+                          <div class="person-header">
+                            ${person.name}${person.isCardOwner ? " (Card Owner)" : ""} - Payments
+                          </div>
+                          <table>
+                            <thead>
+                              <tr style="background:#dcfce7;">
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${personPayments
+                .map(
+                  (transaction) => `
+                                <tr class="payment">
+                                  <td>${formatDate(transaction.date)}</td>
+                                  <td>${transaction.description}</td>
+                                  <td>₹${transaction.amount.toFixed(2)}</td>
+                                </tr>
+                              `
+                )
+                .join("")}
+                              <tr class="total-row">
+                                <td><strong>Total Payments</strong></td>
+                                <td></td>
+                                <td><strong>₹${personPayments
+                .reduce((sum, t) => sum + t.amount, 0)
+                .toFixed(2)}</strong></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      `;
+          })
+          .join("")
+      }
           </div>
 
           <div style="margin-top: 40px; text-align: center; color: #6b7280; font-size: 12px;">
-            <p>Generated by Splitify</p>
+            <span>Generated by Splitify &mdash; <a href="https://ccardly.netlify.app" style="color:#2563eb;text-decoration:none;">Splitify</a></span>
           </div>
         </body>
       </html>
@@ -261,12 +464,12 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-    
+
     setTimeout(() => {
       printWindow.print();
       toast({
         title: "PDF Ready",
-        description: `Bill split summary for ${month} ${year} is ready for download.`
+        description: `Bill split summary for ${month} ${year} is ready for download.`,
       });
     }, 500);
   };
@@ -280,10 +483,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
               <Calculator className="w-5 h-5" />
               Bill Split Summary - {month} {year}
             </CardTitle>
-            <Button 
-              onClick={generatePDF}
-              className="flex items-center gap-2"
-            >
+            <Button onClick={generatePDF} className="flex items-center gap-2">
               <Download className="w-4 h-4" />
               Download PDF
             </Button>
@@ -293,20 +493,36 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
           {/* Overview Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-lg border">
-              <div className="text-2xl font-bold text-blue-600">₹{totalExpenses.toFixed(2)}</div>
-              <div className="text-sm text-muted-foreground">Total Expenses</div>
+              <div className="text-2xl font-bold text-blue-600">
+                ₹{totalExpenses.toFixed(2)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Total Expenses
+              </div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg border">
-              <div className="text-2xl font-bold text-green-600">₹{totalPayments.toFixed(2)}</div>
-              <div className="text-sm text-muted-foreground">Total Payments</div>
+              <div className="text-2xl font-bold text-green-600">
+                ₹{totalPayments.toFixed(2)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Total Payments
+              </div>
             </div>
             <div className="text-center p-4 bg-orange-50 rounded-lg border">
-              <div className="text-2xl font-bold text-orange-600">₹{outstandingBalance.toFixed(2)}</div>
-              <div className="text-sm text-muted-foreground">Outstanding Balance</div>
+              <div className="text-2xl font-bold text-orange-600">
+                ₹{outstandingBalance.toFixed(2)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Outstanding Balance
+              </div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg border">
-              <div className="text-2xl font-bold text-purple-600">{transactions.length}</div>
-              <div className="text-sm text-muted-foreground">Total Transactions</div>
+              <div className="text-2xl font-bold text-purple-600">
+                {expenseTransactions.length}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Total Transactions
+              </div>
             </div>
           </div>
 
@@ -316,20 +532,25 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
               <Users className="w-5 h-5" />
               Individual Balance Summary
             </h3>
-            
+
             <div className="space-y-3">
-              {balances.map(balance => {
-                const person = people.find(p => p.id === balance.personId);
+              {balances.map((balance) => {
+                const person = people.find((p) => p.id === balance.personId);
                 const isOwing = balance.netBalance > 0;
                 const isReceiving = balance.netBalance < 0;
                 const isSettled = balance.netBalance === 0;
-                
+
                 return (
-                  <Card key={balance.personId} className="transition-all hover:shadow-md">
+                  <Card
+                    key={balance.personId}
+                    className="transition-all hover:shadow-md"
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-lg">{person?.name}</span>
+                          <span className="font-medium text-lg">
+                            {person?.name}
+                          </span>
                           {person?.isCardOwner && (
                             <Badge variant="secondary" className="text-xs">
                               Card Owner
@@ -337,17 +558,32 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                           )}
                         </div>
                         <div className="text-right">
-                          <div className={`text-xl font-bold ${isOwing ? 'text-red-600' : isReceiving ? 'text-green-600' : 'text-gray-600'}`}>
-                            {isOwing ? `Owes ₹${balance.netBalance.toFixed(2)}` : 
-                             isReceiving ? `Receives ₹${Math.abs(balance.netBalance).toFixed(2)}` : 
-                             'Settled ✓'}
+                          <div
+                            className={`text-xl font-bold ${isOwing
+                                ? "text-red-600"
+                                : isReceiving
+                                  ? "text-green-600"
+                                  : "text-gray-600"
+                              }`}
+                          >
+                            {isOwing
+                              ? `Due ₹${balance.netBalance.toFixed(2)}`
+                              : isReceiving
+                                ? `Receives ₹${Math.abs(
+                                  balance.netBalance
+                                ).toFixed(2)}`
+                                : "Settled ✓"}
                           </div>
                         </div>
                       </div>
                       <div className="mt-2 grid grid-cols-4 gap-4 text-sm text-muted-foreground">
-                        <div>Personal: ₹{balance.personalExpenses.toFixed(2)}</div>
+                        <div>
+                          Personal: ₹{balance.personalExpenses.toFixed(2)}
+                        </div>
                         <div>Common: ₹{balance.commonExpenses.toFixed(2)}</div>
-                        <div>Total Exp: ₹{balance.totalExpenses.toFixed(2)}</div>
+                        <div>
+                          Total Exp: ₹{balance.totalExpenses.toFixed(2)}
+                        </div>
                         <div>Payments: ₹{balance.totalPayments.toFixed(2)}</div>
                       </div>
                     </CardContent>
@@ -363,7 +599,7 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
               <Receipt className="w-5 h-5" />
               Transaction Details
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Expenses */}
               <div className="space-y-2">
@@ -372,24 +608,40 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                   Expenses ({expenseTransactions.length})
                 </h4>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {expenseTransactions.map(transaction => {
-                    const person = people.find(p => p.id === transaction.spentBy);
+                  {expenseTransactions.map((transaction) => {
+                    const person = people.find(
+                      (p) =>
+                        p.id === transaction.spentBy ||
+                        p.name === transaction.spentBy
+                    );
                     return (
-                      <Card key={transaction.id} className="transition-all hover:shadow-sm border-blue-100">
+                      <Card
+                        key={transaction.id}
+                        className="transition-all hover:shadow-sm border-blue-100"
+                      >
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{transaction.description}</span>
-                                <Badge 
-                                  variant={transaction.isCommonSplit ? 'default' : 'secondary'}
+                                <span className="font-medium text-sm">
+                                  {transaction.description}
+                                </span>
+                                <Badge
+                                  variant={
+                                    transaction.isCommonSplit
+                                      ? "default"
+                                      : "secondary"
+                                  }
                                   className="text-xs"
                                 >
-                                  {transaction.isCommonSplit ? 'Common' : transaction.category}
+                                  {transaction.isCommonSplit
+                                    ? "Common"
+                                    : transaction.category}
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {person?.name} • {transaction.date} {month} {year}
+                                {person?.name} • {transaction.date} {month}{" "}
+                                {year}
                               </div>
                             </div>
                             <div className="text-sm font-semibold text-blue-600">
@@ -410,21 +662,34 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
                   Payments ({paymentTransactions.length})
                 </h4>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {paymentTransactions.map(transaction => {
-                    const person = people.find(p => p.id === transaction.spentBy);
+                  {paymentTransactions.map((transaction) => {
+                    const person = people.find(
+                      (p) =>
+                        p.id === transaction.spentBy ||
+                        p.name === transaction.spentBy
+                    );
                     return (
-                      <Card key={transaction.id} className="transition-all hover:shadow-sm border-green-100">
+                      <Card
+                        key={transaction.id}
+                        className="transition-all hover:shadow-sm border-green-100"
+                      >
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{transaction.description}</span>
-                                <Badge variant="outline" className="text-xs border-green-600 text-green-600">
+                                <span className="font-medium text-sm">
+                                  {transaction.description}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs border-green-600 text-green-600"
+                                >
                                   Payment
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {person?.name} • {transaction.date} {month} {year}
+                                {person?.name} • {transaction.date} {month}{" "}
+                                {year}
                               </div>
                             </div>
                             <div className="text-sm font-semibold text-green-600">
