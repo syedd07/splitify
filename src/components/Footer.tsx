@@ -79,7 +79,7 @@ const Footer = ({ className }: FooterProps) => {
 
             </a>
             <a 
-              href="https://www.instagram.com/syedd07/"
+              href="https://www.Linkedin.com/in/syedd07/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors"

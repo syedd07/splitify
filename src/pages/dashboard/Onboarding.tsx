@@ -16,6 +16,7 @@ import CreditCardForm from '@/components/CreditCardForm';
 import CreditCardDisplay from '@/components/CreditCardDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/hooks/useAuth';
+import { requestNotificationPermission, saveUserPushToken } from '@/lib/notifications';
 
 
 interface CreditCardData {
@@ -622,6 +623,18 @@ const Onboarding = () => {
       setInvitationLoading(false);
     };
   }, [searchParams, user, setCurrentStep, setSelectedCardId]);
+
+  useEffect(() => {
+    // Only run if user is authenticated and not loading
+    if (user && !authLoading) {
+      (async () => {
+        const { token, tokenType } = await requestNotificationPermission();
+        if (token && tokenType) {
+          await saveUserPushToken(user.id, token, tokenType);
+        }
+      })();
+    }
+  }, [user, authLoading]);
 
   if (loading || processingInvitation) {
     return (
