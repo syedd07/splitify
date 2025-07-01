@@ -18,6 +18,9 @@ export const useRealtimeTransactions = ({
 }: UseRealtimeTransactionsProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+ // const [batchQueue, setBatchQueue] = useState<any[]>([]);
+//  const [batchTimeout, setBatchTimeout] = useState<NodeJS.Timeout | null>(null);
+ // const [isBatching, setIsBatching] = useState(false);
   const { toast } = useToast();
   const subscriptionRef = useRef<any>(null);
 
@@ -27,51 +30,92 @@ export const useRealtimeTransactions = ({
 
   // Function to trigger notifications for card members
   const triggerNotifications = async (payload: any) => {
-    try {
-      // Only trigger notifications for INSERT and DELETE events
-      if (payload.eventType !== "INSERT" && payload.eventType !== "DELETE") {
-        return;
+    // Make notifications non-blocking by not awaiting the result
+    setTimeout(async () => {
+      try {
+        // Only trigger notifications for INSERT events (disable DELETE)
+        if (payload.eventType !== "INSERT") {
+          return;
+        }
+
+        // Get the transaction data
+        const transactionData = payload.new;
+
+        // Don't notify the user who made the change
+        if (transactionData.user_id === userId) {
+          return;
+        }
+
+        // Call our Edge Function to send notifications (non-blocking)
+        const session = await supabase.auth.getSession();
+        
+        if (!session.data.session?.access_token) {
+          console.log("No session available for notifications");
+          return;
+        }
+
+        fetch("https://cgdhvzgmndgscqiradnr.supabase.co/functions/v1/notifications", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.data.session.access_token}`,
+          },
+          body: JSON.stringify({
+            event_type: payload.eventType.toLowerCase(),
+            transaction_id: transactionData.id,
+            user_id: transactionData.user_id,
+            credit_card_id: transactionData.credit_card_id,
+            amount: transactionData.amount,
+            description: transactionData.description,
+            transaction_type: transactionData.transaction_type,
+            spent_by_person_name: transactionData.spent_by_person_name,
+            created_at: transactionData.created_at,
+          }),
+        }).catch(error => {
+          console.error("Background notification failed:", error);
+        });
+
+      } catch (error) {
+        console.error("Error in background notification:", error);
       }
+    }, 0); // Fire immediately but don't block
+  };
 
-      // Get the transaction data
-      const transactionData = payload.eventType === "INSERT" ? payload.new : payload.old;
+  // New function to show real-time toast notifications
+  const showRealtimeToast = (payload: any) => {
+    // Only show toast for INSERT events (new transactions)
+    if (payload.eventType !== "INSERT") {
+      return;
+    }
 
-      // Don't notify the user who made the change
-      if (transactionData.user_id === userId) {
-        return;
-      }
+    const transactionData = payload.new;
 
-      // Call our Edge Function to send notifications
-      const session = await supabase.auth.getSession();
-      console.log("Session data:", session.data.session ? "Session exists" : "No session");
-      console.log("Access token:", session.data.session?.access_token ? "Token present" : "No token");
+    // Don't show toast for current user's transactions
+    if (transactionData.user_id === userId) {
+      return;
+    }
 
-      const response = await fetch("https://cgdhvzgmndgscqiradnr.supabase.co/functions/v1/notifications", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.data.session?.access_token}`,
-        },
-        body: JSON.stringify({
-          event_type: payload.eventType.toLowerCase(),
-          transaction_id: transactionData.id,
-          user_id: transactionData.user_id,
-          credit_card_id: transactionData.credit_card_id,
-          amount: transactionData.amount,
-          description: transactionData.description,
-          transaction_type: transactionData.transaction_type,
-          spent_by_person_name: transactionData.spent_by_person_name,
-          created_at: transactionData.created_at,
-        }),
+    // Check if user is on transactions page
+    const isOnTransactionsPage = window.location.pathname.includes('/transactions');
+    
+    if (isOnTransactionsPage) {
+      const isExpense = transactionData.transaction_type === 'expense';
+      const amount = parseFloat(transactionData.amount);
+      const spentBy = transactionData.spent_by_person_name;
+      const description = transactionData.description;
+
+      toast({
+        title: isExpense ? "💸 New Expense" : "💰 New Payment",
+        description: `${spentBy} added ₹${amount} for ${description}`,
+        className: isExpense 
+          ? "border-blue-200 bg-blue-50 text-blue-900" 
+          : "border-green-200 bg-green-50 text-green-900",
+        duration: 4000,
       });
-
-      if (!response.ok) {
-        console.error("Failed to send notification:", await response.text());
-      }
-    } catch (error) {
-      console.error("Error triggering notifications:", error);
     }
   };
+
+  // Add this after showRealtimeToast function:
 
   // Simple loading function - NO useCallback to avoid circular dependencies
   const loadTransactions = async () => {
@@ -179,6 +223,9 @@ export const useRealtimeTransactions = ({
               // Trigger notifications for INSERT/DELETE events
               await triggerNotifications(payload);
 
+              // Show real-time toast for new transactions
+              showRealtimeToast(payload);
+
               // Reload transactions when changes occur
               loadTransactions();
             }
@@ -200,30 +247,15 @@ export const useRealtimeTransactions = ({
   // NO useCallback to avoid circular dependencies
   const addTransaction = async (transaction: Omit<Transaction, "id"> & { includedPeople?: string[] }) => {
     try {
-      // console.log("Adding transaction:", transaction);
-
       // Convert month name to number
       const monthIndex =
         [
-          "January",
-          "February",
-          "March",
-          "April",
-          "May",
-          "June",
-          "July",
-          "August",
-          "September",
-          "October",
-          "November",
-          "December",
+          "January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December",
         ].indexOf(selectedMonth) + 1;
 
       // Format date properly
-      const formattedDate = `${selectedYear}-${String(monthIndex).padStart(
-        2,
-        "0"
-      )}-${String(transaction.date).padStart(2, "0")}`;
+      const formattedDate = `${selectedYear}-${String(monthIndex).padStart(2, "0")}-${String(transaction.date).padStart(2, "0")}`;
 
       const dbTransaction: any = {
         user_id: userId,
@@ -244,6 +276,9 @@ export const useRealtimeTransactions = ({
         dbTransaction.included_people = transaction.includedPeople;
       }
 
+      // SIMPLIFIED APPROACH: Process immediately for now
+      // We can add batching back later once single transactions work properly
+    
       const { data, error } = await supabase
         .from("transactions")
         .insert([dbTransaction])
@@ -261,13 +296,18 @@ export const useRealtimeTransactions = ({
       }
 
       toast({
-        title: "Success",
-        description: "Transaction added successfully",
+        title: "✅ Transaction Added",
+        description: `₹${transaction.amount} for ${transaction.description}`,
+        className: transaction.type === 'expense' 
+          ? "border-blue-200 bg-blue-50" 
+          : "border-green-200 bg-green-50",
       });
 
       return data.id;
+
     } catch (error) {
       console.error("Error saving transaction:", error);
+      
       toast({
         title: "Error",
         description: "Failed to save transaction. Please try again.",
@@ -305,11 +345,16 @@ export const useRealtimeTransactions = ({
     }
   };
 
+  
+
   return {
     transactions,
     loading,
     addTransaction,
     deleteTransaction,
     refreshTransactions: loadTransactions,
+    // Add these new properties for batch status
+    // isBatching,
+    // batchQueueLength: batchQueue.length,
   };
 };

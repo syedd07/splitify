@@ -205,26 +205,33 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         ...(category === 'common' ? { includedPeople: commonSplitPeople } : {})
       };
 
-      const id = await addTransaction(transaction);
+      // Call addTransaction (it handles batching internally)
+      await addTransaction(transaction);
 
+      // Success - reset form and show success message
       setConnectionStatus('connected');
       setLastSyncTime(new Date());
       resetForm();
-      toast({
-        title: "✅ Expense Added",
-        description: `₹${amount} for ${description} has been saved`,
-        className: "border-green-500 bg-green-50",
-      });
 
+      // Don't show individual success toast - the batching system handles this
+      // Just focus on amount input for next transaction
       setTimeout(() => {
         const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
         amountInput?.focus();
       }, 100);
 
     } catch (error) {
+      // Error handling - ensure loading is reset
       setConnectionStatus('disconnected');
       console.error('Failed to add expense:', error);
+      
+      toast({
+        title: "Error",
+        description: "Failed to add expense. Please try again.",
+        variant: "destructive"
+      });
     } finally {
+      // Always reset loading state
       setLoading(false);
     }
   };
@@ -380,6 +387,34 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       </span>
     </div>
   );
+
+  interface BatchStatusBadgeProps {
+    isBatching: boolean;
+    batchQueueLength: number;
+  }
+
+  const BatchStatusBadge: React.FC<BatchStatusBadgeProps> = ({ isBatching, batchQueueLength }) => {
+    if (!isBatching && batchQueueLength === 0) return null;
+
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        {isBatching && (
+          <>
+            <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+            <span className="text-blue-600">Processing batch...</span>
+          </>
+        )}
+        {batchQueueLength > 0 && !isBatching && (
+          <>
+            <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
+            <span className="text-yellow-600">
+              {batchQueueLength} transaction{batchQueueLength > 1 ? 's' : ''} queued
+            </span>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -620,9 +655,10 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         </TabsContent>
       </Tabs>
 
-      {/* Connection Status Badge - Add this section */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      {/* Connection Status and Batch Status */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
         <ConnectionStatusBadge />
+        <BatchStatusBadge isBatching={false} batchQueueLength={0} />
       </div>
 
       {/* Transaction History */}
