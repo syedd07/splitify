@@ -25,6 +25,54 @@ export const useRealtimeTransactions = ({
   const cardId = selectedCard?.id;
   const userId = user?.id;
 
+  // Function to trigger notifications for card members
+  const triggerNotifications = async (payload: any) => {
+    try {
+      // Only trigger notifications for INSERT and DELETE events
+      if (payload.eventType !== "INSERT" && payload.eventType !== "DELETE") {
+        return;
+      }
+
+      // Get the transaction data
+      const transactionData = payload.eventType === "INSERT" ? payload.new : payload.old;
+
+      // Don't notify the user who made the change
+      if (transactionData.user_id === userId) {
+        return;
+      }
+
+      // Call our Edge Function to send notifications
+      const session = await supabase.auth.getSession();
+      console.log("Session data:", session.data.session ? "Session exists" : "No session");
+      console.log("Access token:", session.data.session?.access_token ? "Token present" : "No token");
+
+      const response = await fetch("https://cgdhvzgmndgscqiradnr.supabase.co/functions/v1/notifications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          event_type: payload.eventType.toLowerCase(),
+          transaction_id: transactionData.id,
+          user_id: transactionData.user_id,
+          credit_card_id: transactionData.credit_card_id,
+          amount: transactionData.amount,
+          description: transactionData.description,
+          transaction_type: transactionData.transaction_type,
+          spent_by_person_name: transactionData.spent_by_person_name,
+          created_at: transactionData.created_at,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to send notification:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error triggering notifications:", error);
+    }
+  };
+
   // Simple loading function - NO useCallback to avoid circular dependencies
   const loadTransactions = async () => {
     if (!cardId || !selectedMonth || !selectedYear || !userId) {
@@ -125,9 +173,12 @@ export const useRealtimeTransactions = ({
             table: "transactions",
             filter: `credit_card_id=eq.${cardId}`,
           },
-          (payload) => {
-           // console.log("Real-time transaction update:", payload);
+          async (payload) => {
+            // console.log("Real-time transaction update:", payload);
             if (isMounted) {
+              // Trigger notifications for INSERT/DELETE events
+              await triggerNotifications(payload);
+
               // Reload transactions when changes occur
               loadTransactions();
             }
@@ -149,7 +200,7 @@ export const useRealtimeTransactions = ({
   // NO useCallback to avoid circular dependencies
   const addTransaction = async (transaction: Omit<Transaction, "id"> & { includedPeople?: string[] }) => {
     try {
-    //  console.log("Adding transaction:", transaction);
+      // console.log("Adding transaction:", transaction);
 
       // Convert month name to number
       const monthIndex =
