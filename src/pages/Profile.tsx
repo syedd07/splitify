@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, ArrowLeft, CreditCard, User, Mail, KeyRound, ShieldCheck, LogOut, Loader2, Check, Edit2, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CreditCard, User, Mail, KeyRound, ShieldCheck, LogOut, Loader2, Check, Edit2, X, Calendar, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const Profile = () => {
@@ -150,7 +150,7 @@ const Profile = () => {
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(
         user.email,
-        { redirectTo: `${window.location.origin}/profile?reset=true` }
+        { redirectTo: `${window.location.origin}/reset-password` }
       );
       
       if (error) throw error;
@@ -187,51 +187,73 @@ const Profile = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Header */}
-        <div className="flex items-center mb-8">
+      <div className="container mx-auto px-4 py-4 sm:py-8 max-w-4xl">
+        {/* Enhanced Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center mb-6 sm:mb-8 space-y-4 sm:space-y-0">
           <Button 
             variant="ghost" 
             size="sm" 
             onClick={() => navigate(-1)}
-            className="mr-4"
+            className="self-start sm:mr-4 hover:bg-white/50 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
           
           <div className="flex items-center">
-            <User className="w-6 h-6 text-blue-600 mr-2" />
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mr-3">
+              <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               My Profile
             </h1>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Enhanced Tabs */}
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 mb-6 sm:mb-8 h-12 bg-white/50 backdrop-blur-sm border border-white/20">
+            <TabsTrigger 
+              value="profile" 
+              className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-indigo-600 data-[state=active]:text-white transition-all duration-200"
+            >
+              <User className="w-4 h-4" />
+              <span className="hidden sm:inline">Profile</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="security"
+              className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-indigo-600 data-[state=active]:text-white transition-all duration-200"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span className="hidden sm:inline">Security</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="account"
+              className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-indigo-600 data-[state=active]:text-white transition-all duration-200"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span className="hidden sm:inline">Account</span>
+            </TabsTrigger>
           </TabsList>
           
-          {/* Profile Tab */}
+          {/* Enhanced Profile Tab */}
           <TabsContent value="profile">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
+            <Card className="border border-blue-200 shadow-sm bg-white/50 backdrop-blur-sm">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+                <CardTitle className="text-lg sm:text-xl flex items-center text-blue-900">
                   <User className="w-5 h-5 mr-2 text-blue-600" />
                   Personal Information
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-blue-700">
                   Manage your personal details and how your information is displayed
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Full Name */}
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
+              <CardContent className="p-4 sm:p-6 space-y-6">
+                {/* Enhanced Full Name Field */}
+                <div className="space-y-3">
+                  <Label htmlFor="fullName" className="text-sm font-semibold text-gray-700">
+                    Full Name
+                  </Label>
                   <div className="flex items-center">
                     {isEditingName ? (
                       <div className="flex flex-1 items-center space-x-2">
@@ -240,13 +262,14 @@ const Profile = () => {
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="Your full name"
-                          className="flex-1"
+                          className="flex-1 h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                         />
                         <Button 
                           variant="ghost" 
                           size="sm" 
                           onClick={() => setIsEditingName(false)}
                           disabled={isSaving}
+                          className="h-11 px-3 hover:bg-gray-100"
                         >
                           <X className="w-4 h-4" />
                         </Button>
@@ -255,6 +278,7 @@ const Profile = () => {
                           size="sm"
                           onClick={handleUpdateProfile}
                           disabled={isSaving}
+                          className="h-11 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                         >
                           {isSaving ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -264,69 +288,80 @@ const Profile = () => {
                         </Button>
                       </div>
                     ) : (
-                      <>
-                        <span className="flex-1 text-base">{fullName || 'Not set'}</span>
+                      <div className="flex flex-1 items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                        <span className="text-base font-medium text-gray-900">
+                          {fullName || 'Not set'}
+                        </span>
                         <Button 
                           variant="ghost" 
                           size="sm" 
                           onClick={() => setIsEditingName(true)}
+                          className="hover:bg-blue-50 hover:text-blue-600"
                         >
                           <Edit2 className="w-4 h-4 mr-1" />
                           Edit
                         </Button>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
                 
-                {/* Email Address */}
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
-                  <div className="flex items-center">
-                    <span className="flex-1 text-base">{email}</span>
+                {/* Enhanced Email Address Field */}
+                <div className="space-y-3">
+                  <Label htmlFor="email" className="text-sm font-semibold text-gray-700">
+                    Email Address
+                  </Label>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <span className="text-base font-medium text-gray-900 break-all">{email}</span>
                     <Dialog open={isEmailChangeModalOpen} onOpenChange={setIsEmailChangeModalOpen}>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" className="hover:bg-blue-50 hover:text-blue-600 ml-2">
                           <Edit2 className="w-4 h-4 mr-1" />
                           Change
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                          <DialogTitle>Change Email Address</DialogTitle>
+                          <DialogTitle className="flex items-center gap-2">
+                            <Mail className="w-5 h-5 text-blue-600" />
+                            Change Email Address
+                          </DialogTitle>
                           <DialogDescription>
                             Enter your new email address. You'll need to verify this email before the change takes effect.
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="space-y-2">
-                            <Label htmlFor="newEmail">New Email Address</Label>
+                            <Label htmlFor="newEmail" className="text-sm font-medium">New Email Address</Label>
                             <Input
                               id="newEmail"
                               type="email"
                               value={newEmail}
                               onChange={(e) => setNewEmail(e.target.value)}
                               placeholder="your.new.email@example.com"
+                              className="h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                             />
                           </div>
-                          <Alert  className="bg-amber-50 text-amber-800 border-amber-200">
-                            <AlertCircle className="h-4 w-4 mr-2" />
+                          <Alert className="bg-amber-50 text-amber-800 border-amber-200">
+                            <AlertCircle className="h-4 w-4" />
                             <AlertDescription>
-                              You will be required to verify your new email address before the change takes effect. A verification link will be sent to your new email.
+                              You will be required to verify your new email address before the change takes effect.
                             </AlertDescription>
                           </Alert>
                         </div>
-                        <DialogFooter>
+                        <DialogFooter className="flex flex-col sm:flex-row gap-2">
                           <Button 
                             variant="outline" 
                             onClick={() => setIsEmailChangeModalOpen(false)}
                             disabled={isSaving}
+                            className="w-full sm:w-auto"
                           >
                             Cancel
                           </Button>
                           <Button 
                             onClick={handleEmailChange}
                             disabled={isSaving}
+                            className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                           >
                             {isSaving ? (
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -341,21 +376,21 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                {/* Account Status */}
-                <div className="space-y-2">
-                  <Label>Account Status</Label>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                {/* Enhanced Account Status */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Account Status</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-3 py-1">
                       <Check className="w-3 h-3 mr-1" />
                       Active
                     </Badge>
                     {user?.email_confirmed_at ? (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
                         <ShieldCheck className="w-3 h-3 mr-1" />
                         Verified
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1">
                         <AlertCircle className="w-3 h-3 mr-1" />
                         Unverified
                       </Badge>
@@ -363,49 +398,55 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                {/* Account Created */}
-                <div className="space-y-2">
-                  <Label>Account Created</Label>
-                  <div className="text-base">
-                    {localUserProfile?.created_at ? new Date(localUserProfile.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    }) : 'Unknown'}
+                {/* Enhanced Account Created */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Account Created</Label>
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg border">
+                    <Calendar className="w-4 h-4 text-gray-500 mr-2" />
+                    <span className="text-base font-medium text-gray-900">
+                      {localUserProfile?.created_at ? new Date(localUserProfile.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      }) : 'Unknown'}
+                    </span>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
           
-          {/* Security Tab */}
+          {/* Enhanced Security Tab */}
           <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <KeyRound className="w-5 h-5 mr-2 text-blue-600" />
+            <Card className="border border-orange-200 shadow-sm bg-white/50 backdrop-blur-sm">
+              <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-orange-100">
+                <CardTitle className="text-lg sm:text-xl flex items-center text-orange-900">
+                  <KeyRound className="w-5 h-5 mr-2 text-orange-600" />
                   Security Settings
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-orange-700">
                   Manage your password and security preferences
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Password */}
-                <div className="space-y-2">
-                  <Label>Password</Label>
-                  <div className="flex items-center">
-                    <span className="flex-1 text-base">••••••••</span>
+              <CardContent className="p-4 sm:p-6 space-y-6">
+                {/* Enhanced Password Field */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Password</Label>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <span className="text-base font-medium text-gray-900">••••••••</span>
                     <Dialog open={isPasswordResetModalOpen} onOpenChange={setIsPasswordResetModalOpen}>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" className="hover:bg-orange-50 hover:text-orange-600">
                           <Edit2 className="w-4 h-4 mr-1" />
                           Change
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                          <DialogTitle>Reset Password</DialogTitle>
+                          <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="w-5 h-5 text-orange-600" />
+                            Reset Password
+                          </DialogTitle>
                           <DialogDescription>
                             A password reset link will be sent to your email address.
                           </DialogDescription>
@@ -413,27 +454,28 @@ const Profile = () => {
                         <div className="space-y-4 py-4">
                           {passwordResetSent ? (
                             <Alert className="bg-green-50 text-green-700 border-green-200">
-                              <Check className="h-4 w-4 mr-2" />
+                              <Check className="h-4 w-4" />
                               <AlertDescription>
                                 Password reset email sent! Please check your inbox for a link to reset your password.
                               </AlertDescription>
                             </Alert>
                           ) : (
                             <Alert className="bg-amber-50 text-amber-800 border-amber-200">
-                              <AlertCircle className="h-4 w-4 mr-2" />
+                              <AlertCircle className="h-4 w-4" />
                               <AlertDescription>
-                                For security reasons, we'll send a password reset link to your email address: {email}
+                                For security reasons, we'll send a password reset link to your email address: <strong>{email}</strong>
                               </AlertDescription>
                             </Alert>
                           )}
                         </div>
-                        <DialogFooter>
+                        <DialogFooter className="flex flex-col sm:flex-row gap-2">
                           {passwordResetSent ? (
                             <Button 
                               onClick={() => {
                                 setIsPasswordResetModalOpen(false);
                                 setPasswordResetSent(false);
                               }}
+                              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
                             >
                               Close
                             </Button>
@@ -443,12 +485,14 @@ const Profile = () => {
                                 variant="outline" 
                                 onClick={() => setIsPasswordResetModalOpen(false)}
                                 disabled={isSaving}
+                                className="w-full sm:w-auto"
                               >
                                 Cancel
                               </Button>
                               <Button 
                                 onClick={handlePasswordReset}
                                 disabled={isSaving}
+                                className="w-full sm:w-auto bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
                               >
                                 {isSaving ? (
                                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -465,60 +509,76 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                {/* Last Sign In */}
-                <div className="space-y-2">
-                  <Label>Last Sign In</Label>
-                  <div className="text-base">
-                    {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }) : 'Unknown'}
+                {/* Enhanced Last Sign In */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Last Sign In</Label>
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg border">
+                    <Clock className="w-4 h-4 text-gray-500 mr-2" />
+                    <span className="text-base font-medium text-gray-900">
+                      {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      }) : 'Unknown'}
+                    </span>
                   </div>
                 </div>
                 
-                <Separator className="my-4" />
+                <Separator className="my-6" />
                 
-                {/* Password Requirements */}
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <h3 className="text-sm font-medium text-blue-800 mb-2 flex items-center">
+                {/* Enhanced Password Requirements */}
+                <div className="rounded-lg border-2 border-dashed border-orange-200 bg-gradient-to-r from-orange-50/50 to-red-50/50 p-4">
+                  <h3 className="text-sm font-semibold text-orange-800 mb-3 flex items-center">
                     <ShieldCheck className="w-4 h-4 mr-2" />
                     Password Requirements
                   </h3>
-                  <ul className="text-xs text-blue-700 space-y-1">
-                    <li>• Minimum 6 characters in length</li>
-                    <li>• We recommend using a mix of letters, numbers, and symbols</li>
-                    <li>• Avoid using easily guessable information</li>
+                  <ul className="text-sm text-orange-700 space-y-2">
+                    <li className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                      Minimum 6 characters in length
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                      We recommend using a mix of letters, numbers, and symbols
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                      Avoid using easily guessable information
+                    </li>
                   </ul>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
           
-          {/* Account Tab */}
+          {/* Enhanced Account Tab */}
           <TabsContent value="account">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <CreditCard className="w-5 h-5 mr-2 text-blue-600" />
+            <Card className="border border-purple-200 shadow-sm bg-white/50 backdrop-blur-sm">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
+                <CardTitle className="text-lg sm:text-xl flex items-center text-purple-900">
+                  <CreditCard className="w-5 h-5 mr-2 text-purple-600" />
                   Account Management
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-purple-700">
                   Manage your account preferences and options
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Go to Credit Cards */}
-                <div className="space-y-2">
-                  <Label>Credit Cards</Label>
-                  <div className="flex items-center">
-                    <span className="flex-1 text-base">Manage your credit cards</span>
+              <CardContent className="p-4 sm:p-6 space-y-6">
+                {/* Enhanced Credit Cards Section */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Credit Cards</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+                    <div className="mb-3 sm:mb-0">
+                      <span className="text-base font-medium text-gray-900 block">Manage your credit cards</span>
+                      <span className="text-sm text-gray-600">View and edit your payment methods</span>
+                    </div>
                     <Button 
                       variant="outline" 
                       size="sm"
                       onClick={() => navigate('/onboarding')}
+                      className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white border-0 shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <CreditCard className="w-4 h-4 mr-2" />
                       View Cards
@@ -526,18 +586,21 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                <Separator className="my-4" />
+                <Separator className="my-6" />
                 
-                {/* Logout */}
-                <div className="space-y-2">
-                  <Label>Session</Label>
-                  <div className="flex items-center">
-                    <span className="flex-1 text-base">Sign out from your account</span>
+                {/* Enhanced Logout Section */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Session</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gradient-to-r from-red-50 to-pink-50 rounded-lg border border-red-200">
+                    <div className="mb-3 sm:mb-0">
+                      <span className="text-base font-medium text-gray-900 block">Sign out from your account</span>
+                      <span className="text-sm text-gray-600">End your current session securely</span>
+                    </div>
                     <Button 
                       variant="outline" 
                       size="sm"
                       onClick={handleSignOut}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      className="w-full sm:w-auto text-red-600 hover:text-white hover:bg-gradient-to-r hover:from-red-600 hover:to-red-700 border-red-200 hover:border-red-600 shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <LogOut className="w-4 h-4 mr-2" />
                       Sign Out
