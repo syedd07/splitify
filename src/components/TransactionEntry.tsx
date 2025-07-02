@@ -156,6 +156,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
       // Validation
       if (!amount || !description || !date || (category !== 'common' && !spentBy)) {
+        setLoading(false); // ADD THIS LINE
+        setConnectionStatus('connected'); // ADD THIS LINE
         toast({
           title: "Missing Information",
           description: "Please fill in all fields",
@@ -164,6 +166,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         return;
       }
       if (category === 'common' && commonSplitPeople.length < 2) {
+        setLoading(false); // ADD THIS LINE
+        setConnectionStatus('connected'); // ADD THIS LINE
         toast({
           title: "Select People",
           description: "Select at least 2 people for a common split.",
@@ -205,23 +209,24 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         ...(category === 'common' ? { includedPeople: commonSplitPeople } : {})
       };
 
-      // Call addTransaction (it handles batching internally)
-      await addTransaction(transaction);
+      // Call addTransaction with proper error handling
+      const result = await addTransaction(transaction);
+      
+      if (result) {
+        // Success - reset form and update status
+        setConnectionStatus('connected');
+        setLastSyncTime(new Date());
+        resetForm();
 
-      // Success - reset form and show success message
-      setConnectionStatus('connected');
-      setLastSyncTime(new Date());
-      resetForm();
-
-      // Don't show individual success toast - the batching system handles this
-      // Just focus on amount input for next transaction
-      setTimeout(() => {
-        const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
-        amountInput?.focus();
-      }, 100);
+        // Focus on amount input for next transaction
+        setTimeout(() => {
+          const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
+          amountInput?.focus();
+        }, 100);
+      }
 
     } catch (error) {
-      // Error handling - ensure loading is reset
+      // Error handling
       setConnectionStatus('disconnected');
       console.error('Failed to add expense:', error);
       
@@ -231,7 +236,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         variant: "destructive"
       });
     } finally {
-      // Always reset loading state
+      // ALWAYS reset loading state - this is crucial
       setLoading(false);
     }
   };
