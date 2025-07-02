@@ -444,75 +444,108 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         </TabsList>
 
         <TabsContent value="expense" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Record Expense</CardTitle>
+          <Card className="border border-blue-200 shadow-sm">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+              <CardTitle className="text-lg flex items-center gap-2 text-blue-900">
+                <Receipt className="w-5 h-5 text-blue-600" />
+                Record Expense
+                <Badge variant="outline" className="ml-auto text-xs">
+                  {category === 'common' ? 'Split Equally' : 'Personal'}
+                </Badge>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-4">
+              {/* Amount and Date Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount (₹)</label>
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Amount <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
+                      ₹
+                    </span>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="pl-8 h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      step="0.01"
+                      min="0"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Date</label>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Date <span className="text-red-500">*</span>
+                  </label>
                   <Select value={date} onValueChange={setDate}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500">
+                      <Calendar className="w-4 h-4 mr-2 text-gray-500" />
                       <SelectValue placeholder="Select date" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-64">
                       {getDaysInMonth().map((day) => (
-                        <SelectItem key={day} value={day}>{day}</SelectItem>
+                        <SelectItem key={day} value={day} className="hover:bg-blue-50">
+                          {day} {month} {year}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Description</label>
+              {/* Description Field */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Description <span className="text-red-500">*</span>
+                </label>
                 <Input
-                  placeholder="What was this expense for?"
+                  placeholder="What was this expense for? (e.g., Dinner at restaurant, Groceries)"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  className="h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
 
+              {/* Spent By and Category Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
                     {category === 'common' ? 'Spent by (Auto - Split Equally)' : 'Spent by'}
+                    {category !== 'common' && <span className="text-red-500"> *</span>}
                   </label>
                   <Select 
                     value={spentBy} 
                     onValueChange={setSpentBy}
                     disabled={category === 'common' || isCardMember}
                   >
-                    <SelectTrigger className={category === 'common' || isCardMember ? 'opacity-50 cursor-not-allowed' : ''}>
+                    <SelectTrigger className={`h-11 ${category === 'common' || isCardMember ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'border-gray-300 focus:border-blue-500'}`}>
                       <SelectValue placeholder={
                         category === 'common' 
-                          ? "Will be split equally among all people" 
+                          ? "Will be split equally among selected people" 
                           : isCardMember 
                           ? "You (Card Member)"
-                          : "Who spent this?"
+                          : "Select who spent this"
                       } />
                     </SelectTrigger>
                     <SelectContent>
                       {getAvailablePeople().map((person) => (
-                        <SelectItem key={person.id} value={person.id}>
-                          {person.name} {person.isCardOwner && '(Card Owner)'}
+                        <SelectItem key={person.id} value={person.id} className="hover:bg-blue-50">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            {person.name} {person.isCardOwner && <Badge variant="outline" className="text-xs">Owner</Badge>}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Category</label>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Category <span className="text-red-500">*</span>
+                  </label>
                   <Select value={category} onValueChange={(value: 'personal' | 'common') => {
                     if (isCardMember && value === 'common') {
                       toast({
@@ -530,27 +563,39 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       setSpentBy(currentUserPerson.id);
                     }
                   }}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="personal">Personal</SelectItem>
+                      <SelectItem value="personal" className="hover:bg-blue-50">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          Personal Expense
+                        </div>
+                      </SelectItem>
                       {!isCardMember && (
-                        <SelectItem value="common">Common (Split Equally)</SelectItem>
+                        <SelectItem value="common" className="hover:bg-blue-50">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            Common (Split Equally)
+                          </div>
+                        </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
+              {/* Common Split People Selection */}
               {category === 'common' && (
-                <div className="mb-4 p-3 border rounded-lg bg-blue-50/30">
-                  <label className="block text-sm font-semibold mb-2 text-blue-900">
+                <div className="p-4 border-2 border-dashed border-purple-200 rounded-lg bg-gradient-to-r from-purple-50/50 to-indigo-50/50">
+                  <label className="block text-sm font-semibold mb-3 text-purple-900 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                     Include in Split
                   </label>
-                  <div className="flex flex-wrap gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {people.map(person => (
-                      <label key={person.id} className="flex items-center gap-2 text-sm font-medium">
+                      <label key={person.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 cursor-pointer transition-colors">
                         {typeof Checkbox !== "undefined" ? (
                           <Checkbox
                             checked={commonSplitPeople.includes(person.id)}
@@ -561,6 +606,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                                 setCommonSplitPeople(prev => prev.filter(id => id !== person.id));
                               }
                             }}
+                            className="data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
                           />
                         ) : (
                           <input
@@ -573,87 +619,170 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                                 setCommonSplitPeople(prev => prev.filter(id => id !== person.id));
                               }
                             }}
+                            className="w-4 h-4 text-purple-600 rounded"
                           />
                         )}
-                        <span>
-                          {person.name} {person.isCardOwner && <span className="text-xs text-amber-600">(Card Owner)</span>}
+                        <span className="text-sm font-medium flex items-center gap-2">
+                          {person.name} 
+                          {person.isCardOwner && (
+                            <Badge variant="outline" className="text-xs border-amber-400 text-amber-700">
+                              Owner
+                            </Badge>
+                          )}
                         </span>
                       </label>
                     ))}
                   </div>
                   {commonSplitPeople.length < 2 && (
-                    <div className="text-xs text-red-600 mt-2">Select at least 2 people for a common split.</div>
+                    <div className="flex items-center gap-2 text-xs text-red-600 mt-3 p-2 bg-red-50 rounded-md">
+                      <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                      Select at least 2 people for a common split expense.
+                    </div>
+                  )}
+                  {commonSplitPeople.length >= 2 && (
+                    <div className="flex items-center gap-2 text-xs text-green-600 mt-3 p-2 bg-green-50 rounded-md">
+                      <CheckCircle className="w-3 h-3" />
+                      Amount will be split equally among {commonSplitPeople.length} people (₹{amount ? (parseFloat(amount) / commonSplitPeople.length).toFixed(2) : '0.00'} each)
+                    </div>
                   )}
                 </div>
               )}
 
-              <Button onClick={handleAddExpense} className="w-full" disabled={loading}>
-                <Plus className="w-4 h-4 mr-2" />
-                {loading ? 'Adding...' : 'Add Expense'}
+              {/* Add Expense Button */}
+              <Button 
+                onClick={handleAddExpense} 
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200" 
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Adding Expense...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 mr-2" />
+                    Add Expense {amount && `(₹${amount})`}
+                  </>
+                )}
               </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="payment" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Record Payment</CardTitle>
+          <Card className="border border-green-200 shadow-sm">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100">
+              <CardTitle className="text-lg flex items-center gap-2 text-green-900">
+                <Banknote className="w-5 h-5 text-green-600" />
+                Record Payment
+                <Badge variant="outline" className="ml-auto text-xs border-green-600 text-green-600">
+                  Credit Settlement
+                </Badge>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-4">
+              {/* Amount and Date Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount (₹)</label>
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Payment Amount <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
+                      ₹
+                    </span>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="pl-8 h-11 border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                      step="0.01"
+                      min="0"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Date</label>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
                   <Select value={date} onValueChange={setDate}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 border-gray-300 focus:border-green-500">
+                      <Calendar className="w-4 h-4 mr-2 text-gray-500" />
                       <SelectValue placeholder="Select date" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-64">
                       {getDaysInMonth().map((day) => (
-                        <SelectItem key={day} value={day}>{day}</SelectItem>
+                        <SelectItem key={day} value={day} className="hover:bg-green-50">
+                          {day} {month} {year}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Description</label>
+              {/* Description Field */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Payment Description <span className="text-red-500">*</span>
+                </label>
                 <Input
-                  placeholder="Payment description (e.g., Credit card payment, UPI transfer)"
+                  placeholder="Payment method (e.g., Credit card payment, UPI transfer, Bank transfer)"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  className="h-11 border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Paid by</label>
+              {/* Paid By Field */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Paid by <span className="text-red-500">*</span>
+                </label>
                 <Select value={spentBy} onValueChange={setSpentBy} disabled={isCardMember}>
-                  <SelectTrigger className={isCardMember ? 'opacity-50 cursor-not-allowed' : ''}>
-                    <SelectValue placeholder={isCardMember ? "You (Card Member)" : "Who made this payment?"} />
+                  <SelectTrigger className={`h-11 ${isCardMember ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'border-gray-300 focus:border-green-500'}`}>
+                    <SelectValue placeholder={isCardMember ? "You (Card Member)" : "Select who made this payment"} />
                   </SelectTrigger>
                   <SelectContent>
                     {getAvailablePeople().map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name} {person.isCardOwner && '(Card Owner)'}
+                      <SelectItem key={person.id} value={person.id} className="hover:bg-green-50">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          {person.name} {person.isCardOwner && <Badge variant="outline" className="text-xs">Owner</Badge>}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <Button onClick={handleAddPayment} className="w-full" disabled={loading}>
-                <Plus className="w-4 h-4 mr-2" />
-                {loading ? 'Adding...' : 'Add Payment'}
+              {/* Payment Info Box */}
+              <div className="p-4 bg-gradient-to-r from-green-50/50 to-emerald-50/50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-green-800">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="font-medium">Payment reduces the selected person's outstanding balance</span>
+                </div>
+              </div>
+
+              {/* Add Payment Button */}
+              <Button 
+                onClick={handleAddPayment} 
+                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200" 
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Recording Payment...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 mr-2" />
+                    Record Payment {amount && `(₹${amount})`}
+                  </>
+                )}
               </Button>
             </CardContent>
           </Card>

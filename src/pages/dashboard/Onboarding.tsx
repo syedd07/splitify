@@ -251,30 +251,38 @@ const Onboarding = () => {
         return;
       }
 
-      // Fetch all cards the user has access to (RLS will handle this)
+    //  console.log('Current user email:', userToUse.email);
+    //  console.log('Current user ID:', userToUse.id);
+
+      // Fetch all cards with their membership data
       const { data: allCards, error } = await supabase
         .from('credit_cards')
-        .select('*')
+        .select(`
+          *,
+          card_members(user_id, role)
+        `)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      
+
       // Transform cards and determine roles
       const cardsWithRoles = (allCards || []).map((card, index) => {
         const isOwner = card.user_id === userToUse.id;
         
-        // Handle shared_emails properly as JSONB - Type-safe approach
+        // Check if user is a member from card_members table (prioritized approach)
+        const membershipData = card.card_members?.find(
+          (member: any) => member.user_id === userToUse.id
+        );
+        
+        // Handle shared_emails as fallback for backward compatibility
         let sharedEmails: string[] = [];
         if (card.shared_emails) {
           try {
-            // Type guard to ensure we're working with an array
             if (Array.isArray(card.shared_emails)) {
-              // Filter to ensure all items are strings
               sharedEmails = card.shared_emails.filter((email): email is string => 
                 typeof email === 'string'
               );
             } else if (typeof card.shared_emails === 'string') {
-              // If it's a JSON string, parse it
               const parsed = JSON.parse(card.shared_emails);
               if (Array.isArray(parsed)) {
                 sharedEmails = parsed.filter((email): email is string => 
@@ -287,27 +295,52 @@ const Onboarding = () => {
             sharedEmails = [];
           }
         }
-        
-        const isSharedWithUser = !isOwner && 
-          sharedEmails.some(email => email.toLowerCase() === userToUse.email?.toLowerCase());
-        
+
+        // Check if user is shared via email (fallback approach)
+        const isSharedViaEmail = !isOwner && 
+          sharedEmails.some(email => 
+            email.toLowerCase() === userToUse.email?.toLowerCase()
+          );
+
+        // Determine final role with priority: card_members > shared_emails > guest
+        let finalRole: string;
+        if (isOwner) {
+          finalRole = 'owner';
+        } else if (membershipData) {
+          // User found in card_members table (prioritized approach)
+          finalRole = membershipData.role || 'member';
+        } else if (isSharedViaEmail) {
+          // User found in shared_emails (fallback approach)
+          finalRole = 'member';
+        } else {
+          finalRole = 'guest';
+        }
+
+        // DEBUG: Log the role determination process
+        // console.log(`Card: ${card.card_name}`);
+        // console.log(`  - isOwner: ${isOwner}`);
+        // console.log(`  - membershipData:`, membershipData);
+        // console.log(`  - isSharedViaEmail: ${isSharedViaEmail}`);
+        // console.log(`  - finalRole: ${finalRole}`);
+
         return {
           ...card,
           shared_emails: sharedEmails,
           is_primary: isOwner && index === 0,
-          role: isOwner ? 'owner' : isSharedWithUser ? 'member' : 'guest'
+          role: finalRole,
+          // Remove the card_members array from the final object to keep it clean
+          card_members: undefined
         };
       });
 
-    //  console.log('Cards with roles:', cardsWithRoles);
-      setCreditCards(cardsWithRoles);
-      
-      // Set first card as selected if none selected and we have cards
-      if (cardsWithRoles.length > 0 && !selectedCardId) {
-        setSelectedCardId(cardsWithRoles[0].id);
-      }
+    setCreditCards(cardsWithRoles);
+    
+    // Set first card as selected if none selected and we have cards
+    if (cardsWithRoles.length > 0 && !selectedCardId) {
+      setSelectedCardId(cardsWithRoles[0].id);
+    }
 
-      setErrorMessage('');
+    setErrorMessage('');
     } catch (error: any) {
       console.error('Error fetching credit cards:', error);
       const errorMsg = error.message || 'Failed to fetch credit cards';
@@ -455,6 +488,92 @@ const Onboarding = () => {
     </Sheet>
   );
 
+  // Add these helper functions after MobileMenu component:
+const getOwnedCards = () => creditCards.filter(card => card.role === 'owner');
+const getSharedCards = () => creditCards.filter(card => card.role === 'member');
+
+// Add this component after the helper functions:
+const CardSections = () => {
+  const ownedCards = getOwnedCards();
+  const sharedCards = getSharedCards();
+  
+  // DEBUG: Add these console logs
+  // console.log('Total creditCards:', creditCards.length);
+  // console.log('Owned cards:', ownedCards.length, ownedCards.map(c => c.card_name));
+  // console.log('Shared cards:', sharedCards.length, sharedCards.map(c => c.card_name));
+  
+  return (
+    <div className="space-y-8">
+      {/* My Cards Section */}
+      {(ownedCards.length > 0 || creditCards.length === 0) && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <CreditCard className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-800">My Cards</h3>
+            <span className="text-sm text-muted-foreground">({ownedCards.length})</span>
+          </div>
+          
+          <div className="grid gap-6 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {/* Add New Card Button - Always first in owned cards section */}
+            <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
+              <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center h-full min-h-[180px] sm:min-h-[200px]">
+                <button
+                  onClick={() => setShowAddCard(true)}
+                  className="w-full flex flex-col items-center gap-3 sm:gap-4 text-blue-600 hover:text-blue-700"
+                >
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="font-semibold text-sm sm:text-base">Add New Card</h3>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                      Add another credit card
+                    </p>
+                  </div>
+                </button>
+              </CardContent>
+            </Card>
+
+            {/* Owned Credit Cards */}
+            {ownedCards.map((card) => (
+              <CreditCardDisplay
+                key={card.id}
+                card={card}
+                onUpdate={() => fetchCreditCards()}
+                isSelected={selectedCardId === card.id}
+                onSelect={handleCardSelect}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Shared with Me Section */}
+      {sharedCards.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <User className="w-5 h-5 text-green-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Shared with Me</h3>
+            <span className="text-sm text-muted-foreground">({sharedCards.length})</span>
+          </div>
+          
+          <div className="grid gap-6 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {sharedCards.map((card) => (
+              <CreditCardDisplay
+                key={card.id}
+                card={card}
+                onUpdate={() => fetchCreditCards()}
+                isSelected={selectedCardId === card.id}
+                onSelect={handleCardSelect}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
   // Invitation processing effect
   useEffect(() => {
     // Get URL parameters
@@ -479,7 +598,7 @@ const Onboarding = () => {
         }, 15000); // 15 second timeout
         
         if (!user) {
-          console.log("No user found, waiting for auth");
+          // console.log("No user found, waiting for auth");
           return;
         }
         
@@ -492,7 +611,7 @@ const Onboarding = () => {
           .maybeSingle();
           
         if (!memberError && memberData) {
-          console.log("User is already a member of this card");
+         // console.log("User is already a member of this card");
           // Already a member, we can skip the invitation processing
           if (isMounted) {
             setInvitationLoading(false);
@@ -521,7 +640,7 @@ const Onboarding = () => {
             .maybeSingle();
             
           if (acceptedInvite) {
-            console.log("Invitation was already accepted");
+            // console.log("Invitation was already accepted");
             // Already processed, just continue to cards
             if (isMounted) {
               setInvitationLoading(false);
@@ -539,7 +658,7 @@ const Onboarding = () => {
           return;
         }
         
-        console.log("Processing invitation:", invitation.id);
+       // console.log("Processing invitation:", invitation.id);
         
         // Update the invitation status to accepted
         const { error: updateError } = await supabase
@@ -573,7 +692,7 @@ const Onboarding = () => {
           }
         }
         
-        console.log("Invitation accepted successfully");
+        // console.log("Invitation accepted successfully");
         
         // Get the card details
         const { data: cardData, error: cardError } = await supabase
@@ -716,42 +835,9 @@ const Onboarding = () => {
             </div>
           )}
 
-          {/* Responsive Cards Grid */}
+          {/* Responsive Cards Grid - Updated to use CardSections */}
           <div className="max-w-7xl mx-auto px-4 sm:px-2">
-            <div className="grid gap-6 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {/* Add New Card Button (only show if user has owned cards or no cards) */}
-              {(creditCards.some(card => card.role === 'owner') || creditCards.length === 0) && (
-                <Card className="border-2 border-dashed border-blue-300 hover:border-blue-400 transition-colors cursor-pointer bg-white/50 backdrop-blur-sm">
-                  <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center h-full min-h-[180px] sm:min-h-[200px]">
-                    <button
-                      onClick={() => setShowAddCard(true)}
-                      className="w-full flex flex-col items-center gap-3 sm:gap-4 text-blue-600 hover:text-blue-700"
-                    >
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
-                      </div>
-                      <div className="text-center">
-                        <h3 className="font-semibold text-sm sm:text-base">Add New Card</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          Add another credit card
-                        </p>
-                      </div>
-                    </button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Existing Credit Cards */}
-              {creditCards.map((card) => (
-                <CreditCardDisplay
-                  key={card.id}
-                  card={card}
-                  onUpdate={() => fetchCreditCards()}
-                  isSelected={selectedCardId === card.id}
-                  onSelect={handleCardSelect}
-                />
-              ))}
-            </div>
+            <CardSections />
 
             {/* Quick Actions */}
             <div className="mt-6 sm:mt-8 text-center">

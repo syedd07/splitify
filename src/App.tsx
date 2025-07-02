@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import Footer from "./components/Footer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
 import AuthCallback from "./pages/auth/Callback";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -140,6 +141,7 @@ const App = () => {
               <Routes>
                 <Route path="/" element={<RootRedirect />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route 
                   path="/onboarding" 
                   element={
