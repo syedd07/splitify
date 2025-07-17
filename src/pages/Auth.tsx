@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, Loader2, Mail, UserPlus, CheckCircle } from 'lucide-react';
+import { CreditCard, Loader2, Mail, UserPlus, CheckCircle, Chrome } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -438,9 +438,42 @@ const Auth = () => {
       setLoading(false);
     }
   };
- 
 
- 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      const redirectUrl = `${window.location.origin}/auth/callback${inviteCardId ? `?invite=${inviteCardId}` : ''}`;
+      
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: inviteCardId ? {
+            invite: inviteCardId,
+            email: inviteEmail || ''
+          } : undefined
+        }
+      });
+
+      if (error) {
+        console.error('Google sign in error:', error);
+        toast({
+          title: "Google Sign In Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Google sign in error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sign in with Google",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Add this new useEffect to check invitation validity on load
   useEffect(() => {
@@ -614,6 +647,29 @@ const Auth = () => {
                     'Sign In'
                   )}
                 </Button>
+                
+                {/* Divider */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+                
+                {/* Google Sign In Button */}
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                >
+                  <Chrome className="w-4 h-4 mr-2" />
+                  Sign in with Google
+                </Button>
+                
                 <div className="text-center mt-4">
                   <Button 
                     variant="link" 
@@ -671,6 +727,28 @@ const Auth = () => {
                   ) : (
                     'Create Account'
                   )}
+                </Button>
+                
+                {/* Divider */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+                
+                {/* Google Sign Up Button */}
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                >
+                  <Chrome className="w-4 h-4 mr-2" />
+                  Sign up with Google
                 </Button>
               </form>
             </TabsContent>
