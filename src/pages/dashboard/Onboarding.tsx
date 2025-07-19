@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User, Menu } from 'lucide-react';
+import { CreditCard, Plus, CheckCircle, Loader2, LogOut, User, Menu, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import {  Download, Eye, ArrowLeft, Filter, Search } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -475,6 +476,14 @@ const Onboarding = () => {
           <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
         <div className="flex flex-col gap-4 mt-6">
+          <Button
+            onClick={() => navigate('/statements', { state: { from: '/onboarding' } })}
+            variant="outline"
+            className="justify-start"
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            View Statements
+          </Button>
           <Button onClick={() => navigate('/profile')} variant="outline" className="justify-start">
             <User className="w-4 h-4 mr-2" />
             Profile
@@ -755,6 +764,29 @@ const CardSections = () => {
     }
   }, [user, authLoading]);
 
+  // Add this useEffect after line 90 to handle navigation returns:
+  useEffect(() => {
+    // Fetch cards when component mounts or when navigating back
+    if (user && !authLoading && !loading) {
+      fetchCreditCards(user);
+    }
+  }, [user, authLoading, loading, fetchCreditCards]);
+
+  // Also add this useEffect to handle focus events (when user comes back to tab/page):
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user && !authLoading && !loading) {
+        fetchCreditCards(user);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user, authLoading, loading, fetchCreditCards]);
+
   if (loading || processingInvitation) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
@@ -787,6 +819,15 @@ const CardSections = () => {
             
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-3">
+              <Button
+                onClick={() => navigate('/statements', { state: { from: '/onboarding' } })}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Calendar className="w-4 h-4" />
+                View Statements
+              </Button>
               <Button onClick={() => navigate('/profile')} variant="outline" size="sm">
                 <User className="w-4 h-4 mr-2" />
                 Profile

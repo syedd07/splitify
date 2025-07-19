@@ -16,6 +16,7 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -96,7 +97,7 @@ const Auth = () => {
     return () => subscription.unsubscribe();
   }, [navigate, inviteCardId, inviteEmail, user, toast, searchParams]);
 
-  // Update the handleSignUp function to better handle database errors:
+  // Update the handleSignUp function to check for consent (around line 75):
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -104,6 +105,15 @@ const Auth = () => {
       toast({
         title: "Full name required",
         description: "Please enter your full name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!consentAccepted) {
+      toast({
+        title: "Consent required",
+        description: "Please accept the Terms of Service and Privacy Policy to continue",
         variant: "destructive",
       });
       return;
@@ -718,7 +728,43 @@ const Auth = () => {
                     placeholder="Minimum 6 characters"
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
+                
+                {/* Consent Checkbox */}
+                <div className="flex items-start space-x-2">
+                  <input
+                    id="consent"
+                    type="checkbox"
+                    checked={consentAccepted}
+                    onChange={(e) => setConsentAccepted(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                    required
+                  />
+                  <Label 
+                    htmlFor="consent" 
+                    className="text-sm leading-relaxed cursor-pointer"
+                  >
+                    I agree to the{' '}
+                    <a 
+                      href="/terms-of-service" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Terms of Service
+                    </a>
+                    {' '}and{' '}
+                    <a 
+                      href="/privacy-policy" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Privacy Policy
+                    </a>
+                  </Label>
+                </div>
+                
+                <Button type="submit" className="w-full" disabled={loading || !consentAccepted}>
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />

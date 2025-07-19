@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings, Menu, CheckCircle } from 'lucide-react';
+import { Plus, Users, Calculator, Download, CreditCard, ArrowLeft, LogIn, Settings, Menu, CheckCircle, Calendar, Eye, Filter, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/hooks/useAuth';
+
 
 const Index = () => {
   // Get current date info first
@@ -108,6 +109,19 @@ const Index = () => {
       }
     }
   }, [selectedCard]);
+
+  useEffect(() => {
+  // Auto-hide loading after 5 seconds to prevent stuck states
+  if (loadingTransactions) {
+    const timeout = setTimeout(() => {
+      // Force re-fetch if still loading after 5 seconds
+      window.location.reload();
+    }, 5000);
+    
+    return () => clearTimeout(timeout);
+  }
+}, [loadingTransactions]);
+
 
   // Fetch cards only once when user is available
   useEffect(() => {
@@ -434,6 +448,14 @@ const Index = () => {
           {user ? (
             <>
               <Button
+                onClick={() => navigate('/statements', { state: { from: '/transactions' } })}
+                variant="outline"
+                className="justify-start"
+              >
+                <Calendar className="w-4 h-4 mr-2" />
+                View Statements
+              </Button>
+              <Button
                 onClick={() => navigate('/onboarding')}
                 variant="outline"
                 className="justify-start"
@@ -678,6 +700,15 @@ const Index = () => {
             {user ? (
               <>
                 <Button
+                  onClick={() => navigate('/statements', { state: { from: '/transactions' } })}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  View Statements
+                </Button>
+                <Button
                   onClick={() => navigate('/onboarding')}
                   variant="outline"
                   size="sm"
@@ -761,12 +792,12 @@ const Index = () => {
               </div>
             )}
 
-            {/* Loading indicator for transactions */}
+            {/* Loading indicator for transactions - only show for first 3 seconds */}
             {loadingTransactions && currentStep === 'transactions' && (
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <Card className="max-w-sm sm:max-w-md mx-auto bg-white/80 backdrop-blur-sm">
                   <CardContent className="p-4 sm:p-6">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
                     <h3 className="text-base sm:text-lg font-semibold mb-2">Loading Transactions</h3>
                     <p className="text-sm sm:text-base text-muted-foreground">
                       Syncing your data in real-time...

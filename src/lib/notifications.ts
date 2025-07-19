@@ -25,7 +25,7 @@ export const requestNotificationPermission = async (): Promise<{ token: string |
     });
 
     if (token) {
-      console.log("FCM token received:", token.substring(0, 20) + "...");
+     // console.log("FCM token received:", token.substring(0, 20) + "...");
       return { token, tokenType: 'fcm' };
     } else {
       console.warn("No FCM token received");
@@ -58,6 +58,6 @@ export async function saveUserPushToken(userId: string, token: string, tokenType
     return false;
   }
   
-  console.log("FCM token saved successfully for user:", userId);
+  //console.log("FCM token saved successfully for user:", userId);
   return true;
 }

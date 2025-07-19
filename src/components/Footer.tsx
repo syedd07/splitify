@@ -51,10 +51,10 @@ const Footer = ({ className }: FooterProps) => {
               <a href="mailto:syedyusufali6626@gmail.com" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Support
               </a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <a href="/privacy-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Privacy Policy
               </a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <a href="/terms-of-service" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Terms of Service
               </a>
             </div>

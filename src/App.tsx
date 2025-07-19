@@ -15,6 +15,9 @@ import Footer from "./components/Footer";
 import PwaInstallPrompt from "./components/PwaInstallPrompt";
 import AuthCallback from "./pages/auth/Callback";
 import ResetPassword from "./pages/ResetPassword";
+import StatementsPage from "./pages/statements/page";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 
 const queryClient = new QueryClient();
 
@@ -166,7 +169,17 @@ const App = () => {
                     </ProtectedRoute>
                   } 
                 />
+                <Route 
+                  path="/statements" 
+                  element={
+                    <ProtectedRoute>
+                      <StatementsPage />
+                    </ProtectedRoute>
+                  } 
+                />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/terms-of-service" element={<TermsOfService />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </LayoutWithFooter>
