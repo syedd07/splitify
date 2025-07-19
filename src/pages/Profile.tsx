@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, ArrowLeft, CreditCard, User, Mail, KeyRound, ShieldCheck, LogOut, Loader2, Check, Edit2, X, Calendar, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton'; // Add this import
 
 const Profile = () => {
   const { user, userProfile, loading: authLoading, signOut } = useAuth();
@@ -177,9 +178,46 @@ const Profile = () => {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading your profile...</p>
+        <div className="container mx-auto px-4 py-4 sm:py-8 max-w-4xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center mb-6 sm:mb-8 space-y-4 sm:space-y-0">
+            <Skeleton className="w-24 h-10 rounded-lg" />
+          </div>
+          <Card className="border border-blue-200 shadow-sm bg-white/50 backdrop-blur-sm">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+              <CardTitle>
+                <Skeleton className="w-40 h-6 mb-2" />
+              </CardTitle>
+              <CardDescription>
+                <Skeleton className="w-64 h-4" />
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 space-y-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-gray-700">
+                  Full Name
+                </Label>
+                <Skeleton className="w-full h-11 rounded-lg" />
+              </div>
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-gray-700">
+                  Email Address
+                </Label>
+                <Skeleton className="w-full h-11 rounded-lg" />
+              </div>
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-gray-700">
+                  Account Status
+                </Label>
+                <Skeleton className="w-32 h-8 rounded-lg" />
+              </div>
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-gray-700">
+                  Account Created
+                </Label>
+                <Skeleton className="w-40 h-8 rounded-lg" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );

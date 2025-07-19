@@ -9,6 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Transaction, Person } from '@/types/BillSplitter';
 import { Checkbox } from '@/components/ui/checkbox'; // Add this import if Checkbox exists
+import { useTransactionShortcuts } from '@/hooks/useTransactionShortcuts';
+import { useSmartSuggestions } from '@/hooks/useSmartSuggestions';
+
 
 interface TransactionEntryProps {
   people: Person[];
@@ -47,49 +50,59 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [commonSplitPeople, setCommonSplitPeople] = useState<string[]>(people.map(p => p.id));
+  const [activeTab, setActiveTab] = useState('expense');
+  const [amountInputRef, setAmountInputRef] = useState<HTMLInputElement | null>(null);
+  const [descriptionInputRef, setDescriptionInputRef] = useState<HTMLInputElement | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(true);
+
+  // Smart suggestions for description
+  const { suggestions, showSuggestions, setShowSuggestions } = useSmartSuggestions({
+    transactions,
+    currentDescription: description
+  });
 
   // Helper function to get person name - now that spentBy stores names directly
   const getPersonDisplayName = (spentByValue: string) => {
-   // console.log('🔍 Getting display name for:', spentByValue);
-    
+    // console.log('🔍 Getting display name for:', spentByValue);
+
     // If spentBy is already a name (from database), return it directly
     if (spentByValue && !spentByValue.includes('-') && !spentByValue.startsWith('guest_') && spentByValue.length < 50) {
-    //  console.log('✅ Using stored name:', spentByValue);
+      //  console.log('✅ Using stored name:', spentByValue);
       return spentByValue;
     }
-    
+
     // Handle guest IDs (starts with 'guest_')
     if (spentByValue && spentByValue.startsWith('guest_')) {
       // Try to find guest in people array by ID
       const guestPerson = people.find(p => p.id === spentByValue);
       if (guestPerson) {
-       // console.log('✅ Found guest person by ID:', guestPerson.name);
+        // console.log('✅ Found guest person by ID:', guestPerson.name);
         return guestPerson.name;
       }
       // console.log('⚠️ Guest not found in people array, using fallback');
       return 'Guest User';
     }
-    
+
     // Fallback: try to find person by ID (for backward compatibility)
-    const person = people.find(p => 
-      p.id === spentByValue || 
+    const person = people.find(p =>
+      p.id === spentByValue ||
       ('user_id' in p && p.user_id === spentByValue)
     );
-    
+
     if (person) {
-     // console.log('✅ Found person by ID lookup:', person.name);
+      // console.log('✅ Found person by ID lookup:', person.name);
       return person.name;
     }
-    
+
     // Special case: Check if spentByValue matches currentUser.id
     if (currentUser && spentByValue === currentUser.id) {
       // This transaction was made by the current user
       if (userProfile?.full_name) {
-       // console.log('✅ Using current user full_name:', userProfile.full_name);
+        // console.log('✅ Using current user full_name:', userProfile.full_name);
         return userProfile.full_name;
       }
       if (userProfile?.email) {
-       // console.log('✅ Using current user email:', userProfile.email);
+        // console.log('✅ Using current user email:', userProfile.email);
         return userProfile.email;
       }
     }
@@ -105,12 +118,12 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       setIsCardMember(!isOwner);
 
       // Find current user's person object
-      const userPerson = people.find(person => 
-        person.name === userProfile.full_name || 
+      const userPerson = people.find(person =>
+        person.name === userProfile.full_name ||
         person.name === userProfile.email ||
         person.id === userProfile.id
       );
-      
+
       setCurrentUserPerson(userPerson || null);
 
       // For card members, automatically set spentBy to themselves
@@ -139,7 +152,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     const currentDate = new Date();
     const currentDay = currentDate.getDate().toString();
     setDate(currentDay);
-    
+
     // For card members, keep spentBy set to themselves
     if (isCardMember && currentUserPerson) {
       setSpentBy(currentUserPerson.id);
@@ -211,7 +224,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
       // Call addTransaction with proper error handling
       const result = await addTransaction(transaction);
-      
+
       if (result) {
         // Success - reset form and update status
         setConnectionStatus('connected');
@@ -229,7 +242,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       // Error handling
       setConnectionStatus('disconnected');
       console.error('Failed to add expense:', error);
-      
+
       toast({
         title: "Error",
         description: "Failed to add expense. Please try again.",
@@ -289,7 +302,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
       // Save to database - real-time sync will handle UI updates
       await addTransaction(transaction);
-      
+
       resetForm();
       toast({
         title: "Payment Added",
@@ -308,11 +321,11 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
   const handleDeleteTransaction = async (transactionId: string) => {
     const transaction = transactions.find(t => t.id === transactionId);
-    
+
     // Card members can only delete their own transactions
     // Card owners can delete any transaction
     const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
-    
+
     // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
     if (!isCardOwner && currentUserPerson && transaction && transaction.spentBy !== currentUserPerson.name) {
       toast({
@@ -326,7 +339,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     try {
       // Delete from database - real-time sync will handle UI updates
       await deleteTransaction(transactionId);
-      
+
       toast({
         title: "Transaction Deleted",
         description: "Transaction has been removed successfully."
@@ -353,7 +366,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   // Get days in month for date selection - memoized for performance
   const getDaysInMonth = () => {
     const monthIndex = ['January', 'February', 'March', 'April', 'May', 'June',
-                       'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
+      'July', 'August', 'September', 'October', 'November', 'December'].indexOf(month);
     const daysInMonth = new Date(parseInt(year), monthIndex + 1, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
   };
@@ -421,6 +434,22 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
     );
   };
 
+  // Keyboard shortcuts
+  useTransactionShortcuts({
+    onNewExpense: () => setActiveTab('expense'),
+    onNewPayment: () => setActiveTab('payment'),
+    onSubmitForm: () => {
+      if (activeTab === 'expense') {
+        handleAddExpense();
+      } else {
+        handleAddPayment();
+      }
+    },
+    onFocusAmount: () => amountInputRef?.focus(),
+    onFocusDescription: () => descriptionInputRef?.focus(),
+    isFormVisible: true
+  });
+
   return (
     <div className="space-y-6">
       {isCardMember && (
@@ -431,15 +460,21 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         </div>
       )}
 
-      <Tabs defaultValue="expense" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="expense" className="flex items-center gap-2">
             <Receipt className="w-4 h-4" />
             Add Expense
+            <Badge variant="outline" className="text-xs ml-auto bg-blue-50 text-blue-600 border-blue-200">
+              Ctrl+E
+            </Badge>
           </TabsTrigger>
           <TabsTrigger value="payment" className="flex items-center gap-2">
             <Banknote className="w-4 h-4" />
             Add Payment
+            <Badge variant="outline" className="text-xs ml-auto bg-green-50 text-green-600 border-green-200">
+              Ctrl+R
+            </Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -458,18 +493,28 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
               {/* Amount and Date Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    Amount <span className="text-red-500">*</span>
+                  <label className="block text-sm font-semibold text-gray-700 flex items-center justify-between">
+                    <span>Amount <span className="text-red-500">*</span></span>
+                    <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-200">
+                      Ctrl+M
+                    </Badge>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-semibold">
                       ₹
                     </span>
                     <Input
+                      ref={(el) => setAmountInputRef(el)}
                       type="number"
                       placeholder="0.00"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          descriptionInputRef?.focus();
+                        }
+                      }}
                       className="pl-8 h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                       step="0.01"
                       min="0"
@@ -497,16 +542,94 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
               </div>
 
               {/* Description Field */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">
-                  Description <span className="text-red-500">*</span>
+              <div className="space-y-2 relative">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center justify-between">
+                  <span>Description <span className="text-red-500">*</span></span>
+                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600 border-gray-200">
+                    Ctrl+Q
+                  </Badge>
                 </label>
                 <Input
+                  ref={(el) => setDescriptionInputRef(el)}
                   placeholder="What was this expense for? (e.g., Dinner at restaurant, Groceries)"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (activeTab === 'expense') {
+                        handleAddExpense();
+                      } else {
+                        handleAddPayment();
+                      }
+                    }
+                    if (e.key === 'ArrowDown' && showSuggestions && suggestions.length > 0) {
+                      e.preventDefault();
+                      // Focus first suggestion
+                      const firstSuggestion = document.querySelector('.suggestion-item') as HTMLElement;
+                      firstSuggestion?.focus();
+                    }
+                    if (e.key === 'Escape') {
+                      setShowSuggestions(false);
+                    }
+                  }}
+                  onFocus={() => setShowSuggestions(description.length >= 2)}
+                  onBlur={() => {
+                    // Delay hiding suggestions to allow clicking
+                    setTimeout(() => setShowSuggestions(false), 200);
+                  }}
                   className="h-11 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
+
+                {/* Smart Suggestions Dropdown */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg mt-1">
+                    <div className="p-2 text-xs text-gray-500 border-b bg-gray-50">
+                      Smart suggestions
+                    </div>
+                    {suggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        className="suggestion-item w-full text-left px-3 py-2 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none text-sm border-b last:border-b-0"
+                        onClick={() => {
+                          setDescription(suggestion);
+                          setShowSuggestions(false);
+                          amountInputRef?.focus();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            setDescription(suggestion);
+                            setShowSuggestions(false);
+                          }
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            const nextSibling = e.currentTarget.nextElementSibling as HTMLElement;
+                            nextSibling?.focus();
+                          }
+                          if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            const prevSibling = e.currentTarget.previousElementSibling as HTMLElement;
+                            if (prevSibling && prevSibling.classList.contains('suggestion-item')) {
+                              prevSibling.focus();
+                            } else {
+                              descriptionInputRef?.focus();
+                            }
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                          {suggestion}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Spent By and Category Row */}
@@ -516,18 +639,18 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                     {category === 'common' ? 'Spent by (Auto - Split Equally)' : 'Spent by'}
                     {category !== 'common' && <span className="text-red-500"> *</span>}
                   </label>
-                  <Select 
-                    value={spentBy} 
+                  <Select
+                    value={spentBy}
                     onValueChange={setSpentBy}
                     disabled={category === 'common' || isCardMember}
                   >
                     <SelectTrigger className={`h-11 ${category === 'common' || isCardMember ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'border-gray-300 focus:border-blue-500'}`}>
                       <SelectValue placeholder={
-                        category === 'common' 
-                          ? "Will be split equally among selected people" 
-                          : isCardMember 
-                          ? "You (Card Member)"
-                          : "Select who spent this"
+                        category === 'common'
+                          ? "Will be split equally among selected people"
+                          : isCardMember
+                            ? "You (Card Member)"
+                            : "Select who spent this"
                       } />
                     </SelectTrigger>
                     <SelectContent>
@@ -555,7 +678,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       });
                       return;
                     }
-                    
+
                     setCategory(value);
                     if (value === 'common') {
                       setSpentBy('');
@@ -623,7 +746,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                           />
                         )}
                         <span className="text-sm font-medium flex items-center gap-2">
-                          {person.name} 
+                          {person.name}
                           {person.isCardOwner && (
                             <Badge variant="outline" className="text-xs border-amber-400 text-amber-700">
                               Owner
@@ -649,20 +772,23 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
               )}
 
               {/* Add Expense Button */}
-              <Button 
-                onClick={handleAddExpense} 
-                className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200" 
+              <Button
+                onClick={handleAddPayment}
+                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
                 disabled={loading}
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Adding Expense...
+                    Recording Payment...
                   </>
                 ) : (
                   <>
                     <Plus className="w-5 h-5 mr-2" />
-                    Add Expense {amount && `(₹${amount})`}
+                    Record Payment {amount && `(₹${amount})`}
+                    <Badge variant="outline" className="ml-auto bg-white/20 text-white border-white/30 text-xs">
+                      Ctrl+Enter
+                    </Badge>
                   </>
                 )}
               </Button>
@@ -767,9 +893,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
               </div>
 
               {/* Add Payment Button */}
-              <Button 
-                onClick={handleAddPayment} 
-                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200" 
+              <Button
+                onClick={handleAddPayment}
+                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
                 disabled={loading}
               >
                 {loading ? (
@@ -829,15 +955,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
                       // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
                       const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
-                      
-                    //  console.log('Rendering expense transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
-                      
+
+                      //  console.log('Rendering expense transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
+
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50/50">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{transaction.description}</span>
-                              <Badge 
+                              <Badge
                                 variant={transaction.isCommonSplit ? 'default' : 'secondary'}
                                 className="text-xs"
                               >
@@ -877,9 +1003,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
                       const isCardOwner = selectedCard && currentUser && selectedCard.user_id === currentUser.id;
                       // Fix: Compare transaction.spentBy (name) with currentUserPerson.name (name)
                       const canDelete = isCardOwner || (currentUserPerson && transaction.spentBy === currentUserPerson.name);
-                      
-                     // console.log('Rendering payment transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
-                      
+
+                      // console.log('Rendering payment transaction:', transaction.id, 'spentBy:', transaction.spentBy, 'personName:', personName);
+
                       return (
                         <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50/50">
                           <div className="flex-1">

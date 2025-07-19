@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRealtimeTransactions } from '@/hooks/useRealtimeTransactions';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/hooks/useAuth';
+import { Skeleton } from '@/components/ui/skeleton'; // Add this import
 
 
 const Index = () => {
@@ -511,9 +512,19 @@ const Index = () => {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-100 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-lg text-muted-foreground">Loading your data...</p>
+        <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 sm:mb-8">
+            <Skeleton className="w-40 h-10 rounded-lg" />
+            <Skeleton className="w-32 h-8 rounded-lg" />
+          </div>
+          <div className="mb-8">
+            <Skeleton className="w-full h-8 rounded-lg" />
+          </div>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="w-full h-24 rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     );
