@@ -1,0 +1,95 @@
+name: Supabase Daily Heartbeat
+
+on:
+  schedule:
+    # Run at 03:17 UTC (low traffic time)
+    - cron: '17 3 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  heartbeat:
+    name: Send Heartbeat
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if using Node script
+        id: check-node
+        run: |
+          if [[ "${{ vars.USE_NODE_HEARTBEAT }}" == "true" ]]; then
+            echo "use_node=true" >> $GITHUB_OUTPUT
+          else
+            echo "use_node=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Simple Curl Heartbeat
+        if: steps.check-node.outputs.use_node != 'true'
+        run: |
+          echo "Using simple curl heartbeat..."
+          TABLE="${{ secrets.HEARTBEAT_TABLE || 'profiles' }}"
+          TIMESTAMP=$(date +%s)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/${TABLE}?limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          
+          echo "Heartbeat status: $STATUS"
+          if [[ $STATUS -lt 200 || $STATUS -ge 300 ]]; then
+            echo "⚠️ Warning: Received non-success status code: $STATUS"
+            exit 1
+          fi
+          echo "✅ Heartbeat successful! Supabase instance active."
+
+      - name: Checkout code for Node script
+        if: steps.check-node.outputs.use_node == 'true'
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js for script
+        if: steps.check-node.outputs.use_node == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Node.js Heartbeat
+        if: steps.check-node.outputs.use_node == 'true'
+        run: |
+          echo "Using Node.js heartbeat script..."
+          npm install @supabase/supabase-js
+          
+          cat > heartbeat.js << 'EOF'
+          const { createClient } = require('@supabase/supabase-js');
+          
+          async function sendHeartbeat() {
+            const supabaseUrl = process.env.SUPABASE_URL;
+            const supabaseKey = process.env.SUPABASE_KEY;
+            const tableName = process.env.TABLE_NAME || 'profiles';
+            
+            if (!supabaseUrl || !supabaseKey) {
+              console.error('⚠️ Missing Supabase credentials');
+              process.exit(1);
+            }
+            
+            const supabase = createClient(supabaseUrl, supabaseKey);
+            
+            try {
+              const { data, error, status } = await supabase
+                .from(tableName)
+                .select('*')
+                .limit(1);
+                
+              if (error) throw error;
+              
+              console.log(`✅ Heartbeat successful! Status: ${status}`);
+              console.log(`Timestamp: ${new Date().toISOString()}`);
+              process.exit(0);
+            } catch (error) {
+              console.error('⚠️ Heartbeat failed:', error.message);
+              process.exit(1);
+            }
+          }
+          
+          sendHeartbeat();
+          EOF
+          
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+          SUPABASE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+          TABLE_NAME=${{ secrets.HEARTBEAT_TABLE }} \
+          node heartbeat.js

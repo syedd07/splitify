@@ -28,5 +28,6 @@ dist-ssr
 .env.test.local
 
 .github/*
+!.github/workflows/
 .github/instructions
 supabase
