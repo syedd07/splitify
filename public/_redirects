@@ -1,2 +1,8 @@
 
+### Canonical domain redirects (add before SPA catch-all)
+# Redirect www -> apex
+https://www.splitify.tech/*  https://splitify.tech/:splat  301!
+# (Optional) Example Netlify subdomain to apex (replace YOUR-SITE if desired)
+# https://ccardly.netlify.app/*  https://splitify.tech/:splat  301!
+
 /*    /index.html   200
