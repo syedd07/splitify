@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CreditCard, Loader2, Mail, UserPlus, CheckCircle, Chrome } from 'lucide-react';
+import { CreditCard, Loader2, Mail, UserPlus, CheckCircle, Chrome, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -17,6 +17,7 @@ const Auth = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // Ensure this state exists
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -634,19 +635,29 @@ const Auth = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    readOnly={!!inviteEmail}
+                    placeholder="Enter your email" // Add placeholder here
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 relative"> {/* Add relative positioning for the password field */}
                   <Label htmlFor="password">Password</Label>
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'} // Toggle password visibility
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    minLength={6}
+                    placeholder="Enter your password" // Add placeholder here
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)} // Toggle showPassword state
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2" // Center the eye icon
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />} {/* Eye icon */}
+                  </button>
                 </div>
+
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
                     <>
@@ -714,19 +725,27 @@ const Auth = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     readOnly={!!inviteEmail}
+                    placeholder="Enter your email" // Add placeholder here
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 relative"> {/* Add relative positioning for the password field */}
                   <Label htmlFor="password">Password</Label>
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'} // Toggle password visibility
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={6}
                     placeholder="Minimum 6 characters"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)} // Toggle showPassword state
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2" // Position the eye icon
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />} {/* Eye icon */}
+                  </button>
                 </div>
                 
                 {/* Consent Checkbox */}

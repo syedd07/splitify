@@ -1,4 +1,3 @@
-
 ### Canonical domain redirects (add before SPA catch-all)
 # Redirect www -> apex
 https://www.splitify.tech/*  https://splitify.tech/:splat  301!

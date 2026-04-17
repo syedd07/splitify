@@ -163,6 +163,8 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
   };
 
   const handleAddExpense = async () => {
+    let failed = false;
+
     try {
       setLoading(true);
       setConnectionStatus('reconnecting');
@@ -226,20 +228,16 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       const result = await addTransaction(transaction);
 
       if (result) {
-        // Success - reset form and update status
-        setConnectionStatus('connected');
         setLastSyncTime(new Date());
         resetForm();
 
-        // Focus on amount input for next transaction
         setTimeout(() => {
           const amountInput = document.querySelector('input[type="number"]') as HTMLInputElement;
           amountInput?.focus();
         }, 100);
       }
-
     } catch (error) {
-      // Error handling
+      failed = true;
       setConnectionStatus('disconnected');
       console.error('Failed to add expense:', error);
 
@@ -249,33 +247,39 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
         variant: "destructive"
       });
     } finally {
-      // ALWAYS reset loading state - this is crucial
       setLoading(false);
+      if (!failed) {
+        setConnectionStatus('connected');
+      }
     }
   };
 
   const handleAddPayment = async () => {
-    // Quick validation checks first
-    if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
-      toast({
-        title: "Access Restricted",
-        description: "As a card member, you can only record your own payments.",
-        variant: "destructive"
-      });
-      return;
-    }
+    let failed = false;
 
-    if (!amount || !description || !date || !spentBy) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all fields to add a payment.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setLoading(true);
     try {
+      setLoading(true);
+      setConnectionStatus('reconnecting');
+
+      // Quick validation checks first
+      if (isCardMember && currentUserPerson && spentBy !== currentUserPerson.id) {
+        toast({
+          title: "Access Restricted",
+          description: "As a card member, you can only record your own payments.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!amount || !description || !date || !spentBy) {
+        toast({
+          title: "Missing Information",
+          description: "Please fill in all fields to add a payment.",
+          variant: "destructive"
+        });
+        return;
+      }
+
       // Find the person to get their name
       const selectedPerson = people.find(p => p.id === spentBy);
       if (!selectedPerson) {
@@ -303,12 +307,15 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       // Save to database - real-time sync will handle UI updates
       await addTransaction(transaction);
 
+      setLastSyncTime(new Date());
       resetForm();
       toast({
         title: "Payment Added",
         description: `₹${amount} payment for ${description} has been recorded.`
       });
     } catch (error) {
+      failed = true;
+      setConnectionStatus('disconnected');
       toast({
         title: "Error",
         description: "Failed to save payment. Please try again.",
@@ -316,6 +323,9 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
       });
     } finally {
       setLoading(false);
+      if (!failed) {
+        setConnectionStatus('connected');
+      }
     }
   };
 
@@ -773,19 +783,19 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
 
               {/* Add Expense Button */}
               <Button
-                onClick={handleAddPayment}
-                className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
+                onClick={handleAddExpense}
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200"
                 disabled={loading}
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Recording Payment...
+                    Adding Expense...
                   </>
                 ) : (
                   <>
                     <Plus className="w-5 h-5 mr-2" />
-                    Record Payment {amount && `(₹${amount})`}
+                    Add Expense {amount && `(₹${amount})`}
                     <Badge variant="outline" className="ml-auto bg-white/20 text-white border-white/30 text-xs">
                       Ctrl+Enter
                     </Badge>
@@ -927,7 +937,7 @@ const TransactionEntry: React.FC<TransactionEntryProps> = ({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Transaction History - All Card Transactions
+              Transaction History
               <div className="ml-auto flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm text-muted-foreground">Live</span>

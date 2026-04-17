@@ -18,9 +18,6 @@ export const useRealtimeTransactions = ({
 }: UseRealtimeTransactionsProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
- // const [batchQueue, setBatchQueue] = useState<any[]>([]);
-//  const [batchTimeout, setBatchTimeout] = useState<NodeJS.Timeout | null>(null);
- // const [isBatching, setIsBatching] = useState(false);
   const { toast } = useToast();
   const subscriptionRef = useRef<any>(null);
 
@@ -244,6 +241,18 @@ export const useRealtimeTransactions = ({
     };
   }, [cardId, selectedMonth, selectedYear, userId]); // Removed loadTransactions from dependencies
 
+  const mapDbTransaction = (dbTransaction: any): Transaction => ({
+    id: dbTransaction.id,
+    amount: parseFloat(dbTransaction.amount.toString()),
+    description: dbTransaction.description,
+    date: dbTransaction.transaction_date.split("-")[2],
+    type: dbTransaction.transaction_type as "expense" | "payment",
+    category: dbTransaction.category as "personal" | "common",
+    spentBy: dbTransaction.spent_by_person_name,
+    isCommonSplit: dbTransaction.is_common_split || false,
+    includedPeople: dbTransaction.included_people ?? undefined,
+  });
+
   // NO useCallback to avoid circular dependencies
   const addTransaction = async (transaction: Omit<Transaction, "id"> & { includedPeople?: string[] }) => {
     try {
@@ -282,7 +291,7 @@ export const useRealtimeTransactions = ({
       const { data, error } = await supabase
         .from("transactions")
         .insert([dbTransaction])
-        .select("id")
+        .select("*")
         .single();
 
       if (error) {
@@ -295,16 +304,20 @@ export const useRealtimeTransactions = ({
         throw error;
       }
 
+      if (data) {
+        const newTransaction = mapDbTransaction(data);
+        setTransactions(prev => [newTransaction, ...prev]);
+      }
+
       toast({
         title: "✅ Transaction Added",
         description: `₹${transaction.amount} for ${transaction.description}`,
-        className: transaction.type === 'expense' 
-          ? "border-blue-200 bg-blue-50" 
+        className: transaction.type === 'expense'
+          ? "border-blue-200 bg-blue-50"
           : "border-green-200 bg-green-50",
       });
 
       return data.id;
-
     } catch (error) {
       console.error("Error saving transaction:", error);
       
@@ -317,7 +330,6 @@ export const useRealtimeTransactions = ({
     }
   };
 
-  // NO useCallback to avoid circular dependencies
   const deleteTransaction = async (transactionId: string) => {
     try {
       const { error } = await supabase
@@ -329,6 +341,8 @@ export const useRealtimeTransactions = ({
         console.error("Error deleting transaction:", error);
         throw error;
       }
+
+      setTransactions(prev => prev.filter(t => t.id !== transactionId));
 
       toast({
         title: "Success",

@@ -154,43 +154,106 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Credit Card Bill Split - ${month} ${year}</title>
+          <title>Splitify | Credit Card Bill Split - ${month} ${year}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
-            .header { text-align: center; margin-bottom: 30px; }
+            @page {
+              size: A4 portrait;
+              margin: 12mm;
+            }
+
+            html, body {
+              width: 210mm;
+              min-height: 297mm;
+            }
+
+            body { font-family: Arial, sans-serif; margin: 0; color: #333; }
+
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .header img {
+              display: block;
+              margin: 0 auto 8px auto;
+            }
+
+            .header h1,
+            .header h2,
+            .header p {
+              width: 100%;
+              text-align: center;
+              margin-left: 0;
+              margin-right: 0;
+            }
+
             .header h1 { color: #2563eb; margin-bottom: 10px; }
             .header h2 { color: #059669; margin: 0; }
-            .summary { margin: 20px 0; }
-            .section { margin: 30px 0; }
-            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+
+            .site-url {
+              margin-top: 6px;
+              font-size: 12px;
+              color: #64748b;
+            }
+
+            .summary { margin: 16px 0; }
+            .section { margin: 20px 0; }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 10px 0;
+              page-break-inside: auto;
+            }
+
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+
+            tr, th, td {
+              border: 1px solid #ddd;
+              padding: 8px;
+              text-align: left;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+
             th { background-color: #e0e7ff; }
             .total-row { font-weight: bold; background-color: #f1f5f9; }
             .expense { background-color: #dbeafe; }
             .payment { background-color: #dcfce7; }
-            .person-section { margin: 20px 0; page-break-inside: avoid; }
-            .person-header { 
-              background-color: #f8fafc; 
-              padding: 10px; 
-              margin: 10px 0; 
+
+            /* allow long sections to naturally flow across pages */
+            .person-section { margin: 14px 0; page-break-inside: auto; break-inside: auto; }
+
+            .person-header {
+              background-color: #f8fafc;
+              padding: 10px;
+              margin: 10px 0;
               border-left: 4px solid #2563eb;
               font-weight: bold;
+              break-after: avoid;
             }
+
             .balance-positive { color: #dc2626; }
             .balance-negative { color: #059669; }
             .card-owner { color: #7c3aed; }
+
             @media print {
-              body { margin: 15px; }
-              .person-section { page-break-inside: avoid; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
           <div class="header">
-            <img src="https://raw.githubusercontent.com/syedd07/splitify/refs/heads/main/public/pwa-192x192.png" alt="Splitify" style="height:100px;width:100px;border-radius:8px;margin-bottom:8px; bgcolor: white;">
+            <img src="https://raw.githubusercontent.com/syedd07/splitify/refs/heads/main/public/pwa-192x192.png" alt="Splitify" style="height:100px;width:100px;border-radius:8px;margin-bottom:8px;">
             <h1>Credit Card Bill Split Summary</h1>
             <h2>${month} ${year}</h2>
             <p>Generated on ${getCurrentFormattedDate()}</p>
+            <p class="site-url">splitify.tech</p>
           </div>
           
           <div class="summary">
@@ -402,14 +465,18 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
             ${people.every(
         (person) =>
           sortTransactionsByDate(
-            paymentTransactions.filter((t) => t.spentBy === person.id)
+            paymentTransactions.filter(
+              (t) => t.spentBy === person.id || t.spentBy === person.name
+            )
           ).length === 0
       )
         ? `<div style="color:#888;padding:12px;">No payment transactions found for any user.</div>`
         : people
           .map((person) => {
             const personPayments = sortTransactionsByDate(
-              paymentTransactions.filter((t) => t.spentBy === person.id)
+              paymentTransactions.filter(
+                (t) => t.spentBy === person.id || t.spentBy === person.name
+              )
             );
             if (personPayments.length === 0) {
               return `<div class="person-section"><div class="person-header">${person.name} - No payments recorded.</div></div>`;
@@ -464,6 +531,13 @@ const CalculationSummary: React.FC<CalculationSummaryProps> = ({
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+
+    // Avoid "about:blank" in print header/footer where possible
+    try {
+      printWindow.history.replaceState({}, "", "/report-print");
+    } catch (e) {
+      // ignore
+    }
 
     setTimeout(() => {
       printWindow.print();
