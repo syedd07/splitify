@@ -178,6 +178,7 @@ const App = () => {
                   } 
                 />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/v1/verify" element={<AuthCallback />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/terms-of-service" element={<TermsOfService />} />
                 <Route path="*" element={<NotFound />} />
